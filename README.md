@@ -4,17 +4,19 @@
 
 ## دریافت و نصب
 
-- [ستاپ ویندوز ۱۰ و ۱۱، ۶۴ بیتی](https://github.com/Araz0-0dev/AMretro/releases/download/v0.3.0/AMretro-Setup-0.3.0-x64.exe)
-- [بستهٔ نصبی اوبونتو/دبیان ۶۴ بیتی](https://github.com/Araz0-0dev/AMretro/releases/download/v0.3.0/AMretro_0.3.0_amd64.deb)
-- [اندروید بتا 0.1.0؛ APK برای ARM64](https://github.com/Araz0-0dev/AMretro/releases/download/android-v0.1.0-beta/AMretro-Android-0.1.0-beta-arm64.apk) — اندروید ۷ یا جدیدتر؛ [راهنمای همان نسخه](https://github.com/Araz0-0dev/AMretro/blob/android-v0.1.0-beta/android/README.md). [راهنمای شاخهٔ در حال ساخت 0.2](android/README.md) ویژگی‌های جدید را توضیح می‌دهد.
-- [پیش‌نمایش رابط](https://github.com/Araz0-0dev/AMretro/releases/download/v0.3.0/AMretro-Preview.png)
-- [پیش‌نمایش تنظیم دکمه‌ها با دادهٔ آزمایشی](https://github.com/Araz0-0dev/AMretro/releases/download/v0.3.0/AMretro-Controls.png)
-- [سورس پروژه](https://github.com/Araz0-0dev/AMretro/releases/download/v0.3.0/AMretro-Source.zip)
-- [فهرست SHA-256 فایل‌ها](https://github.com/Araz0-0dev/AMretro/releases/download/v0.3.0/AMretro-SHA256SUMS.txt)
+هر سه فایل نصب و توضیحات آن‌ها در [صفحهٔ یکپارچهٔ دانلود](https://github.com/Araz0-0dev/AMretro/releases/tag/downloads-2026-10-28) در دسترس‌اند:
+
+| سیستم | نسخه | فایل نصب |
+| --- | --- | --- |
+| Windows 10/11، ۶۴ بیتی | 0.3.0 | [دریافت ستاپ EXE](https://github.com/Araz0-0dev/AMretro/releases/download/downloads-2026-10-28/AMretro-Setup-0.3.0-x64.exe) |
+| Ubuntu / Debian، ۶۴ بیتی | 0.3.0 | [دریافت بستهٔ DEB](https://github.com/Araz0-0dev/AMretro/releases/download/downloads-2026-10-28/AMretro_0.3.0_amd64.deb) |
+| Android 7+، ARM64 | 0.2.0-beta | [دریافت APK آزمایشی](https://github.com/Araz0-0dev/AMretro/releases/download/downloads-2026-10-28/AMretro-Android-0.2.0-beta-arm64.apk) |
+
+[SHA-256 فایل‌های نصب](https://github.com/Araz0-0dev/AMretro/releases/download/downloads-2026-10-28/AMretro-Installers-SHA256.txt) · [سورس دسکتاپ نسخهٔ 0.3.0](https://github.com/Araz0-0dev/AMretro/releases/download/v0.3.0/AMretro-Source.zip) · [راهنمای اندروید 0.2](android/README.md). نسخه‌های قبلی در صفحهٔ Releaseها حفظ شده‌اند.
 
 ### اندروید بتا
 
-در نسخهٔ منتشرشدهٔ 0.1، اجرای داخلی و دستهٔ لمسی برای GB، GBC و GBA است. سورس شاخهٔ 0.2 اجرای آزمایشی NES و Mega Drive، سه جایگاه ذخیره، انتخاب BIOS شخصی و کنترل یکپارچه را اضافه می‌کند؛ [راهنمای این شاخه](android/README.md) محدودیت‌ها و آزمون‌ها را توضیح می‌دهد. برای سایر کنسول‌ها RetroArch و هستهٔ جداگانه لازم است. تروفی محلی با RetroAchievements رسمی متفاوت است و اجرای داخلی دستاورد رسمی را باز نمی‌کند.
+اندروید 0.2.0-beta اجرای داخلی GB/GBC/GBA و پشتیبانی آزمایشی NES و Mega Drive، سه جایگاه ذخیره، انتخاب BIOS شخصی و کنترل قابل‌تنظیم دارد؛ [راهنمای اندروید](android/README.md) محدودیت‌ها و آزمون‌ها را توضیح می‌دهد. برای سایر کنسول‌ها RetroArch و هستهٔ جداگانه لازم است. تروفی محلی با RetroAchievements رسمی متفاوت است و اجرای داخلی دستاورد رسمی را باز نمی‌کند. APK ARM64 هنوز روی گوشی واقعی آزموده نشده و این نسخه نهایی نیست.
 
 ### ویندوز
 
