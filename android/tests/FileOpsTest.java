@@ -13,7 +13,7 @@ public class FileOpsTest {
         FakeHttps(URL u){super(u);}
         @Override public void setRequestProperty(String key,String value){if("Range".equals(key))range=value;}
         private int offset(){return range==null?0:Integer.parseInt(range.substring(6,range.length()-1));}
-        @Override public int getResponseCode(){lastRange=range;return range==null?200:(offset()>=HTTP_DATA.length?416:206);}
+        @Override public int getResponseCode(){lastRange=range;if(url.getPath().equals("/missing"))return 404;return range==null?200:(offset()>=HTTP_DATA.length?416:206);}
         @Override public String getHeaderField(String key){return "Content-Range".equals(key)&&range!=null?"bytes "+offset()+"-"+(HTTP_DATA.length-1)+"/"+HTTP_DATA.length:null;}
         @Override public long getContentLengthLong(){return HTTP_DATA.length-offset();}
         @Override public InputStream getInputStream(){return new ByteArrayInputStream(HTTP_DATA,offset(),HTTP_DATA.length-offset());}
@@ -73,7 +73,14 @@ public class FileOpsTest {
             File done=new File(root,"complete.part");Files.write(done.toPath(),HTTP_DATA);lastRange="not-requested";
             FileOps.download("https://fixture.test/game",done,expectedHash,null);check("not-requested".equals(lastRange),"verified complete file reused");
             try{FileOps.download("http://fixture.test/game",done,expectedHash,null);throw new AssertionError("insecure URL accepted for complete file");}catch(IOException expected){}
-            System.out.println("FILEOPS_TEST_OK zip-slip, checksum, HTTPS, resume/restart/416, complete reuse, resampler phase");
+            File firstPart=new File(root,"primary.part");Files.write(firstPart.toPath(),new byte[]{0,1,2});boolean[] switched={false};
+            File mirror=FileOps.downloadWithBackup("https://fixture.test/missing","https://fixture.test/game",firstPart,expectedHash,"game.gba",null,()->switched[0]=true);
+            check(switched[0]&&mirror.getName().endsWith(".mirror")&&Arrays.equals(Files.readAllBytes(mirror.toPath()),HTTP_DATA),"failed primary uses separate verified mirror");
+            try{FileOps.downloadWithBackup("https://fixture.test/missing","",new File(root,"nobackup.part"),expectedHash,"game.gba",null,null);throw new AssertionError("failed primary with no mirror accepted");}catch(IOException expected){}
+            File custom=new File(dest,"folder/demo.ws");Files.write(custom.toPath(),new byte[]{4});
+            check(FileOps.chooseGame(dest,"wonderswan","ws,wsc,zip,7z").equals(custom),"catalog-defined console extensions");
+            check(FileOps.archiveIsGame("neogeo")&&!FileOps.archiveIsGame("nes"),"arcade archives kept intact");
+            System.out.println("FILEOPS_TEST_OK mirror, extensions, zip-slip, checksum, HTTPS, resume/restart/416, complete reuse, resampler phase");
         }finally{FileOps.deleteTree(root);}
     }
 }

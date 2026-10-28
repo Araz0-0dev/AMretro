@@ -4,13 +4,16 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.graphics.Color;
 import android.graphics.PixelFormat;
+import android.hardware.input.InputManager;
 import android.media.AudioFormat;
 import android.media.AudioManager;
 import android.media.AudioTrack;
 import android.os.Bundle;
 import android.os.SystemClock;
 import android.view.Gravity;
+import android.view.InputDevice;
 import android.view.KeyEvent;
+import android.view.MotionEvent;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.view.View;
@@ -20,9 +23,11 @@ import android.widget.FrameLayout;
 import android.widget.Toast;
 import org.json.JSONObject;
 import java.io.File;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
-public final class GameActivity extends Activity implements SurfaceHolder.Callback {
+public final class GameActivity extends Activity implements SurfaceHolder.Callback, InputManager.InputDeviceListener {
     private static final Object CORE_SESSION_LOCK=new Object();
     private SurfaceView surface;
     private FrameLayout root;
@@ -30,6 +35,10 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
     private final ConcurrentLinkedQueue<Integer> commands = new ConcurrentLinkedQueue<>();
     private volatile int touchButtons, physicalButtons;
     private InputProfile.PressedKeys pressedKeys;
+    private InputProfile keyboardProfile;
+    private InputProfileStore inputProfiles;
+    private final Map<String,InputProfile> controllerProfiles=new HashMap<>();
+    private final Map<Integer,Integer> axisButtons=new HashMap<>();
     private volatile AudioTrack audioTrack;
     private Thread player;
     private String gameId, romPath, console;
@@ -44,7 +53,9 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         GameStore store = new GameStore(this); JSONObject game = store.get(gameId); store.close();
         if (game == null) { finish(); return; }
         romPath = game.optString("rom_path"); console = game.optString("console_id");
-        pressedKeys=new InputProfile.PressedKeys(ControlSettings.load(this));
+        inputProfiles=ControlSettings.store(this);keyboardProfile=inputProfiles.activeKeyboard();
+        pressedKeys=new InputProfile.PressedKeys(keyboardProfile);
+        InputManager manager=(InputManager)getSystemService(INPUT_SERVICE);if(manager!=null)manager.registerInputDeviceListener(this,null);
         root = new FrameLayout(this); root.setBackgroundColor(Color.BLACK);
         surface = new SurfaceView(this); surface.getHolder().setFormat(PixelFormat.RGBA_8888); surface.getHolder().addCallback(this);
         FrameLayout.LayoutParams screen = new FrameLayout.LayoutParams(1, 1, Gravity.CENTER); root.addView(surface, screen);
@@ -58,7 +69,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
     private void notifyUser(String text) { runOnUiThread(() -> Toast.makeText(this,text,Toast.LENGTH_LONG).show()); }
     private void showMenu() {
         if (menuPaused) return;
-        menuPaused=true; touchButtons=physicalButtons=0;if(pressedKeys!=null)pressedKeys.clear();
+        menuPaused=true; clearPhysical();touchButtons=0;
         String[] items={"ادامهٔ بازی",userPaused?"ادامه از توقف":"توقف موقت",
             "ذخیرهٔ حالت · جایگاه ۱","بارگذاری حالت · جایگاه ۱",
             "ذخیرهٔ حالت · جایگاه ۲","بارگذاری حالت · جایگاه ۲",
@@ -115,7 +126,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
         if (track!=null) try { track.pause(); track.flush(); } catch (Exception ignored) { }
         Thread p=player;
         if (p!=null && p!=Thread.currentThread()) try { p.join(3000); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
-        touchButtons=physicalButtons=0;if(pressedKeys!=null)pressedKeys.clear();
+        touchButtons=0;clearPhysical();
     }
     private boolean processCommands(File states) {
         boolean resetAudio=false; Integer command;
@@ -224,12 +235,50 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             runOnUiThread(() -> { if (token==myToken) { running=false; player=null; if (resumed && surfaceReady && !isFinishing()) maybeStart(); } });
         }
     }
+    private void clearPhysical(){
+        if(pressedKeys!=null)pressedKeys.clear();axisButtons.clear();physicalButtons=0;
+    }
+    private void updatePhysical(){
+        int mask=pressedKeys==null?0:pressedKeys.mask();for(int value:axisButtons.values())mask|=value;physicalButtons=mask;
+    }
+    private InputProfile controllerProfile(InputDevice device){
+        String descriptor=ControlSettings.descriptor(device);InputProfile profile=controllerProfiles.get(descriptor);
+        if(profile==null){
+            try{profile=inputProfiles.forController(descriptor);}catch(Exception e){profile=keyboardProfile;}
+            controllerProfiles.put(descriptor,profile);
+        }
+        return profile;
+    }
     @Override public boolean onKeyDown(int code, KeyEvent event) {
-        if(pressedKeys!=null && pressedKeys.down(code)){physicalButtons=pressedKeys.mask();return true;}
+        InputDevice device=event.getDevice();boolean pad=ControlSettings.isController(event) && device!=null;
+        InputProfile profile=pad?controllerProfile(device):keyboardProfile;
+        int mask=profile==null?0:(pad?profile.controllerMaskForKey(code):profile.keyboardMaskForKey(code));
+        if(pressedKeys!=null && pressedKeys.down(event.getDeviceId(),code,mask)){updatePhysical();return true;}
         return super.onKeyDown(code,event);
     }
     @Override public boolean onKeyUp(int code, KeyEvent event) {
-        if(pressedKeys!=null && pressedKeys.up(code)){physicalButtons=pressedKeys.mask();return true;}
+        if(pressedKeys!=null && pressedKeys.up(event.getDeviceId(),code)){updatePhysical();return true;}
         return super.onKeyUp(code,event);
+    }
+    @Override public void onInputDeviceAdded(int id) { }
+    @Override public void onInputDeviceChanged(int id) { onInputDeviceRemoved(id); }
+    @Override public void onInputDeviceRemoved(int id) {
+        if(pressedKeys!=null)pressedKeys.clearDevice(id);axisButtons.remove(id);updatePhysical();
+    }
+    @Override protected void onDestroy(){
+        InputManager manager=(InputManager)getSystemService(INPUT_SERVICE);if(manager!=null)manager.unregisterInputDeviceListener(this);
+        super.onDestroy();
+    }
+    @Override public boolean onGenericMotionEvent(MotionEvent event){
+        InputDevice device=event.getDevice();
+        if(event.getAction()==MotionEvent.ACTION_MOVE && ControlSettings.isController(device) &&
+           (event.getSource()&InputDevice.SOURCE_JOYSTICK)==InputDevice.SOURCE_JOYSTICK){
+            InputProfile p=controllerProfile(device);
+            int mask=p.axesMask(event.getAxisValue(MotionEvent.AXIS_X),event.getAxisValue(MotionEvent.AXIS_Y),
+                                event.getAxisValue(MotionEvent.AXIS_HAT_X),event.getAxisValue(MotionEvent.AXIS_HAT_Y));
+            if(mask==0)axisButtons.remove(event.getDeviceId());else axisButtons.put(event.getDeviceId(),mask);
+            updatePhysical();return true;
+        }
+        return super.onGenericMotionEvent(event);
     }
 }

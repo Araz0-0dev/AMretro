@@ -38,11 +38,38 @@ async fn download_with_progress<F>(url:String,path:PathBuf,sha:String,on_progres
 where F:Fn(bytehaul::ProgressSnapshot)+Send+'static {
     validate_link(&url)?;if !sha.is_empty()&&(sha.len()!=64||!sha.bytes().all(|x|x.is_ascii_hexdigit())){return Err("SHA-256 ثبت‌شده نامعتبر است.".into())}
     let downloader=Downloader::builder().build().map_err(|e|format!("دانلودکننده آماده نشد: {e}"))?;
-    let mut spec=DownloadSpec::new(url).output_path(path).resume(true).max_connections(4);
+    let mut spec=DownloadSpec::new(url).output_path(path).resume(!sha.is_empty()).max_connections(4).max_retries(2);
     if !sha.is_empty(){spec=spec.checksum(Checksum::Sha256(sha));}
     let handle=downloader.download(spec);let mut rx=handle.subscribe_progress();
     let watcher=tauri::async_runtime::spawn(async move {while rx.changed().await.is_ok(){let snap=rx.borrow().clone();let terminal=!matches!(snap.state,bytehaul::DownloadState::Pending|bytehaul::DownloadState::Downloading);on_progress(snap);if terminal {break;}}});
     let result=handle.wait().await.map_err(|e|format!("دانلود ناموفق بود: {e}"));let _=watcher.await;result
+}
+
+
+// Download mirrors independently. Never mix a partial primary file with mirror
+// bytes; validate an optional SHA-256 against both. A plain HTML error page also
+// counts as a failed link and triggers the backup.
+async fn game_download_with_backup<F,G>(primary:String,backup:String,primary_path:PathBuf,backup_path:PathBuf,sha:String,on_progress:F,on_backup:G)->Result<PathBuf,String>
+where F:Fn(bytehaul::ProgressSnapshot,bool)+Send+Sync+'static, G:Fn()+Send+Sync {
+    let has_backup=!backup.trim().is_empty() && backup!=primary;
+    let cb=Arc::new(on_progress);let first_cb=cb.clone();
+    let first=download_with_progress(primary,primary_path.clone(),sha.clone(),move |s|first_cb(s,has_backup)).await
+        .and_then(|_|archive_kind(&primary_path).map(|_|()));
+    match first {
+        Ok(())=>Ok(primary_path),
+        Err(first_error)=>{
+            if !has_backup{return Err(first_error)}
+            on_backup();let second_cb=cb.clone();
+            match download_with_progress(backup,backup_path.clone(),sha,move |s|second_cb(s,false)).await
+                .and_then(|_|archive_kind(&backup_path).map(|_|())) {
+                Ok(())=>Ok(backup_path),
+                Err(_)=>Err("دانلود از هر دو آدرس ناموفق بود؛ لینک‌ها و SHA-256 را بررسی کن.".into()),
+            }
+        }
+    }
+}
+fn clear_partial(path:&Path){
+    let _=fs::remove_file(path);let mut sidecar=path.as_os_str().to_os_string();sidecar.push(".bytehaul");let _=fs::remove_file(PathBuf::from(sidecar));
 }
 
 #[derive(Debug,PartialEq)]
@@ -84,7 +111,7 @@ fn install_files(download:&Path,games_dir:&Path,game:&Game,console:&Console)->Re
     let stage=games_dir.join(format!(".install-{}",game.id));if stage.exists(){fs::remove_dir_all(&stage).map_err(|e|e.to_string())?}fs::create_dir(&stage).map_err(|e|e.to_string())?;
     let result=(||{
         let kind=archive_kind(download)?;
-        let playable=if game.console_id=="arcade" && kind==ArchiveKind::Seek && download.extension().and_then(|x|x.to_str()).map(|x|x.eq_ignore_ascii_case("zip")).unwrap_or(false){
+        let playable=if matches!(game.console_id.as_str(),"arcade"|"neogeo"|"naomi"|"dos") && kind==ArchiveKind::Seek && download.extension().and_then(|x|x.to_str()).map(|x|x.eq_ignore_ascii_case("zip")).unwrap_or(false){
             let p=stage.join(filename(game));fs::copy(download,&p).map_err(|e|e.to_string())?;p
         } else if kind==ArchiveKind::Unsupported {return Err("RAR پشتیبانی نمی‌شود؛ ZIP یا 7z لازم است.".into())}
         else if kind!=ArchiveKind::None {extract_safe(download,&stage)?;choose_playable(&stage,&console.extensions)?}
@@ -98,9 +125,17 @@ pub async fn install_game(app:AppHandle,db_path:PathBuf,data_root:PathBuf,settin
     progress(&app,&game.id,"game","starting","در حال بررسی BIOS کنسول پیش از نصب بازی…");
     crate::bios::ensure_for_game(&app,&db_path,&data_root,&settings,&console,&bios,&bios_lock).await?;
     let dir=data_root.join("downloads");fs::create_dir_all(&dir).map_err(|e|e.to_string())?;
-    let temp=dir.join(format!("{}-{}",game.id,filename(&game)));
+    let primary=dir.join(format!("{}-{}",game.id,filename(&game)));
+    let backup=dir.join(format!("mirror-{}-{}",game.id,filename(&game)));
     progress(&app,&game.id,"game","starting",if game.sha256.is_empty(){"دانلود آغاز شد؛ هش SHA-256 ثبت نشده است."}else{"دانلود با بررسی SHA-256 آغاز شد."});
-    download(app.clone(),game.id.clone(),"game".into(),game.download_url.clone(),temp.clone(),game.sha256.clone()).await?;
+    let a=app.clone();let id=game.id.clone();let backup_app=app.clone();let backup_id=game.id.clone();
+    let temp=game_download_with_backup(game.download_url.clone(),game.backup_url.clone(),primary.clone(),backup.clone(),game.sha256.clone(),
+        move |snap,may_retry|{
+            let failed=matches!(snap.state,bytehaul::DownloadState::Failed);
+            let state=if failed&&may_retry{"starting".into()}else{format!("{:?}",snap.state).to_lowercase()};
+            let message=if failed&&may_retry{"در حال بررسی لینک پشتیبان…"}else{"در حال دانلود…"};
+            let _=a.emit("download-progress",ProgressEvent{id:id.clone(),kind:"game".into(),state,message:message.into(),downloaded:snap.downloaded,total:snap.total_size,speed:snap.speed_bytes_per_sec,eta:snap.eta_secs});
+        },move ||progress(&backup_app,&backup_id,"game","starting","لینک اصلی کار نکرد؛ در حال امتحان لینک پشتیبان…")).await?;
     progress(&app,&game.id,"game","installing","در حال بررسی و نصب بازی…");
     let g=game.clone();let c=console.clone();let game_dir=PathBuf::from(&settings.games_dir);let temp2=temp.clone();
     let installed=tokio::task::spawn_blocking(move||install_files(&temp2,&game_dir,&g,&c)).await.map_err(|e|e.to_string())??;
@@ -108,10 +143,11 @@ pub async fn install_game(app:AppHandle,db_path:PathBuf,data_root:PathBuf,settin
         // This folder was created by this installation attempt; don't leave an unusable partial install.
         let _=fs::remove_dir_all(PathBuf::from(&settings.games_dir).join(&game.id));return Err(e)
     }
-    let _=fs::remove_file(temp);
+    clear_partial(&primary);clear_partial(&backup);
     progress(&app,&game.id,"game","installed","بازی نصب شد.");Ok(())
 }
 pub fn begin_game(app:AppHandle,db_path:PathBuf,data_root:PathBuf,settings:AppSettings,game:Game,console:Console,bios:Vec<Bios>,active:Arc<Mutex<HashSet<String>>>,bios_lock:Arc<tokio::sync::Mutex<()>>)->Result<(),String>{
+    if console.core=="unsupported" {return Err("این کنسول در نسخهٔ فعلی AMretro پشتیبانی نمی‌شود.".into())}
     {let mut a=active.lock().map_err(|_|"خطای وضعیت دانلود".to_string())?;if !a.insert(game.id.clone()){return Err("این بازی در حال دانلود است.".into())}}
     tauri::async_runtime::spawn(async move{let id=game.id.clone();if let Err(e)=install_game(app.clone(),db_path,data_root,settings,game,console,bios,bios_lock).await{progress(&app,&id,"game","failed",&e)}if let Ok(mut a)=active.lock(){a.remove(&id);}});Ok(())
 }
@@ -141,14 +177,20 @@ mod tests {
  #[tokio::test(flavor="multi_thread",worker_threads=2)]async fn bytehaul_downloads_and_checks_sha(){
    use std::{net::TcpListener,io::{Read as _,Write as _},sync::atomic::{AtomicBool,Ordering},time::Duration};
    let listener=TcpListener::bind("127.0.0.1:0").unwrap();listener.set_nonblocking(true).unwrap();let url=format!("http://{}/test.bin",listener.local_addr().unwrap());let done=Arc::new(AtomicBool::new(false));let stop=done.clone();
-   let server=std::thread::spawn(move||{while !stop.load(Ordering::Relaxed){if let Ok((mut stream,_))=listener.accept(){let _=stream.set_read_timeout(Some(Duration::from_secs(2)));let mut buf=[0;4096];let n=stream.read(&mut buf).unwrap_or(0);let req=String::from_utf8_lossy(&buf[..n]);let head=req.starts_with("HEAD ");let bytes=b"hello world";let mut start=0usize;let mut end=bytes.len()-1;let mut partial=false;
+   let server=std::thread::spawn(move||{while !stop.load(Ordering::Relaxed){if let Ok((mut stream,_))=listener.accept(){let _=stream.set_read_timeout(Some(Duration::from_secs(2)));let mut buf=[0;4096];let n=stream.read(&mut buf).unwrap_or(0);let req=String::from_utf8_lossy(&buf[..n]);let head=req.starts_with("HEAD ");if req.contains(" /missing.bin "){let _=stream.write_all(b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");continue}let bytes=b"hello world";let mut start=0usize;let mut end=bytes.len()-1;let mut partial=false;
     for line in req.lines(){if let Some(v)=line.to_ascii_lowercase().strip_prefix("range: bytes="){let mut parts=v.trim().split('-');if let Some(a)=parts.next(){start=a.parse().unwrap_or(0)}if let Some(b)=parts.next(){if !b.is_empty(){end=b.parse::<usize>().unwrap_or(end).min(end)}}partial=true;}}
     if start>=bytes.len(){let _=stream.write_all(b"HTTP/1.1 416 Range Not Satisfiable\r\nContent-Range: bytes */11\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");continue}
     let range=if partial{format!("Content-Range: bytes {start}-{end}/{}\r\n",bytes.len())}else{String::new()};let status=if partial{"206 Partial Content"}else{"200 OK"};let h=format!("HTTP/1.1 {status}\r\nContent-Length: {}\r\nAccept-Ranges: bytes\r\n{range}Connection: close\r\n\r\n",end-start+1);let _=stream.write_all(h.as_bytes());if !head{let _=stream.write_all(&bytes[start..=end]);}
    }else{std::thread::sleep(Duration::from_millis(2))}}});
    let t=tempfile::tempdir().unwrap();let path=t.path().join("ok.bin");let sha="b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9";
    let result=download_with_progress(url.clone(),path.clone(),sha.into(),|_|{}).await;assert!(result.is_ok(),"{result:?}");assert_eq!(fs::read(path).unwrap(),b"hello world");
-   let bad=download_with_progress(url,t.path().join("bad.bin"),"0".repeat(64),|_|{}).await;assert!(bad.is_err());done.store(true,Ordering::Relaxed);server.join().unwrap();
+   let bad=download_with_progress(url.clone(),t.path().join("bad.bin"),"0".repeat(64),|_|{}).await;assert!(bad.is_err());
+   let primary=t.path().join("primary.bin");let mirror=t.path().join("mirror.bin");fs::write(&primary,b"stale partial").unwrap();
+   let switched=Arc::new(AtomicBool::new(false));let changed=switched.clone();
+   let result=game_download_with_backup(url.replace("/test.bin","/missing.bin"),url.clone(),primary.clone(),mirror.clone(),sha.into(),|_,_|{},move||{changed.store(true,Ordering::Relaxed);}).await.unwrap();
+   assert_eq!(result,mirror);assert!(switched.load(Ordering::Relaxed));assert_eq!(fs::read(result).unwrap(),b"hello world");
+   let failed=game_download_with_backup(url.replace("/test.bin","/missing.bin"),String::new(),t.path().join("missing.bin"),t.path().join("unused.bin"),sha.into(),|_,_|{},||{}).await;assert!(failed.is_err());
+   done.store(true,Ordering::Relaxed);server.join().unwrap();
  }
 
  #[tokio::test(flavor="multi_thread",worker_threads=2)]#[ignore="uses a temporary test file published on the configured Cloudflare Worker"]

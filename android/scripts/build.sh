@@ -10,7 +10,7 @@ BT=${ANDROID_BUILD_TOOLS_DIR:-"$ANDROID_SDK_ROOT/build-tools/35.0.0"}
 PLATFORM=${ANDROID_PLATFORM_JAR:-"$ANDROID_SDK_ROOT/platforms/android-35/android.jar"}
 TOOLCHAIN="$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64"
 BUILD=${AMRETRO_ANDROID_BUILD_DIR:-"$APP/.build-local"}
-OUT=${AMRETRO_ANDROID_APK:-"$ROOT/releases/AMretro-Android-0.2.0-beta-arm64.apk"}
+OUT=${AMRETRO_ANDROID_APK:-"$ROOT/releases/AMretro-Android-0.2.1-beta-arm64.apk"}
 [ -f "$PLATFORM" ] && [ -x "$BT/aapt" ] && [ -x "$TOOLCHAIN/bin/aarch64-linux-android24-clang" ] || { echo 'Android SDK / NDK paths are invalid.' >&2; exit 1; }
 mkdir -p "$BUILD" "$(dirname "$OUT")"
 rm -rf "$BUILD/classes" "$BUILD/dex" "$BUILD/apk" "$BUILD/unsigned.apk" "$BUILD/aligned.apk"

@@ -1,6 +1,6 @@
 [package]
 name = "retro-hub-desktop"
-version = "0.3.0"
+version = "0.3.1"
 description = "AMretro desktop launcher"
 edition = "2021"
 rust-version = "1.88"

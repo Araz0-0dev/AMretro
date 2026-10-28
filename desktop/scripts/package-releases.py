@@ -21,7 +21,7 @@ with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED, compresslevel=8) as archive
         archive.write(root / name, 'AMretro-Source/' + name)
 print('Source:', out.name)
 
-items = [release / name for name in ('AMretro-Setup-0.3.0-x64.exe', 'AMretro_0.3.0_amd64.deb', 'AMretro-Source.zip', 'AMretro-Preview.png', 'AMretro-Controls.png')]
+items = [release / name for name in ('AMretro-Setup-0.3.1-x64.exe', 'AMretro_0.3.1_amd64.deb', 'AMretro-Source.zip')]
 with (release / 'AMretro-SHA256SUMS.txt').open('w', encoding='utf-8') as f:
     for p in items:
         if not p.exists():

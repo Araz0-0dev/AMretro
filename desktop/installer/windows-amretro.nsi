@@ -38,10 +38,10 @@ InstallDirRegKey HKCU "Software\AMretro" "InstallDir"
 SetCompressor /SOLID lzma
 ShowInstDetails nevershow
 ShowUninstDetails nevershow
-VIProductVersion "0.3.0.0"
+VIProductVersion "0.3.1.0"
 VIAddVersionKey "ProductName" "AMretro"
-VIAddVersionKey "ProductVersion" "0.3.0"
-VIAddVersionKey "FileVersion" "0.3.0"
+VIAddVersionKey "ProductVersion" "0.3.1"
+VIAddVersionKey "FileVersion" "0.3.1"
 VIAddVersionKey "FileDescription" "AMretro Setup"
 VIAddVersionKey "CompanyName" "AMretro"
 
@@ -121,7 +121,7 @@ Section "AMretro" SEC_APP
 
   WriteRegStr HKCU "Software\AMretro" "InstallDir" "$INSTDIR"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\AMretro" "DisplayName" "AMretro"
-  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\AMretro" "DisplayVersion" "0.3.0"
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\AMretro" "DisplayVersion" "0.3.1"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\AMretro" "Publisher" "AMretro"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\AMretro" "InstallLocation" "$INSTDIR"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\AMretro" "DisplayIcon" "$INSTDIR\AMretro.exe"

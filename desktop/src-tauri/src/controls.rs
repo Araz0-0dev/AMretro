@@ -49,9 +49,13 @@ pub fn view(db_path:&Path,game_id:Option<&str>)->Result<ProfileView,String>{
     Ok(ProfileView{profile:default_profile(),customized:false,inherited:game_id.is_some()})
 }
 pub fn save(db_path:&Path,game_id:Option<&str>,profile:&ControlProfile)->Result<(),String>{
-    validate(profile)?;let key=scope(game_id)?;db::save_control_profile(db_path,&key,&serde_json::to_string(profile).map_err(|e|e.to_string())?)
+    validate(profile)?;
+    if game_id.is_none(){return crate::input_presets::save_global(db_path,profile)}
+    let key=scope(game_id)?;db::save_control_profile(db_path,&key,&serde_json::to_string(profile).map_err(|e|e.to_string())?)
 }
-pub fn reset(db_path:&Path,game_id:Option<&str>)->Result<(),String>{db::delete_control_profile(db_path,&scope(game_id)?)}
+pub fn reset(db_path:&Path,game_id:Option<&str>)->Result<(),String>{
+    if game_id.is_none(){crate::input_presets::save_global(db_path,&default_profile())}else{db::delete_control_profile(db_path,&scope(game_id)?)}
+}
 pub fn effective(db_path:&Path,game_id:&str)->Result<ControlProfile,String>{
     let key=scope(Some(game_id))?;
     if let Some(p)=read(db_path,&key)? {return Ok(p)}

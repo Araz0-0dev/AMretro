@@ -2,13 +2,13 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
-pub struct Console { pub id: String, pub name: String, pub slug: String, pub core: String, pub extensions: String, pub icon_url: String }
+pub struct Console { pub id: String, pub name: String, pub slug: String, pub manufacturer: String, pub core: String, pub extensions: String, pub icon_url: String }
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Game {
     pub id: String, pub title: String, pub console_id: String, pub console_name: String,
     pub console_core: String, pub description: String, pub cover_url: String, pub icon_url: String,
-    pub download_url: String, pub file_name: String, pub size_bytes: u64, pub sha256: String,
+    pub download_url: String, pub backup_url: String, pub file_name: String, pub size_bytes: u64, pub sha256: String, pub created_at: String,
     pub images: Vec<GameImage>,
 }
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

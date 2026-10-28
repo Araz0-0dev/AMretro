@@ -5,7 +5,7 @@ set -euo pipefail
 here="$(cd "$(dirname "$0")/.." && pwd)"
 root="$(cd "$here/.." && pwd)"
 bin="${1:?provide the absolute path to the Ubuntu 22.04-built executable}"
-out="${2:-$root/releases/AMretro_0.3.0_amd64.deb}"
+out="${2:-$root/releases/AMretro_0.3.1_amd64.deb}"
 work="$(mktemp -d)"
 chmod 0755 "$work"
 trap 'rm -rf "$work"' EXIT
@@ -34,7 +34,7 @@ depends='libc6 (>= 2.34), libcairo2 (>= 1.10.0), libdbus-1-3 (>= 1.9.14), libgcc
 installed="$(du -sk "$work/usr" | cut -f1)"
 cat > "$work/DEBIAN/control" <<CONTROL
 Package: amretro
-Version: 0.3.0
+Version: 0.3.1
 Section: games
 Priority: optional
 Architecture: amd64

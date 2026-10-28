@@ -3,7 +3,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 use std::path::Path;
 
 const API: &str = "https://retro-hub-68aa04.am0u0dev.workers.dev";
-fn open(path:&Path)->Result<Connection,String>{let c=Connection::open(path).map_err(|e|format!("خطای پایگاه داده: {e}"))?;c.busy_timeout(std::time::Duration::from_secs(5)).map_err(|e|e.to_string())?;Ok(c)}
+pub(crate) fn open(path:&Path)->Result<Connection,String>{let c=Connection::open(path).map_err(|e|format!("خطای پایگاه داده: {e}"))?;c.busy_timeout(std::time::Duration::from_secs(5)).map_err(|e|e.to_string())?;Ok(c)}
 pub fn initialize(path:&Path)->Result<(),String>{
     let c=open(path)?;
     c.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;
@@ -12,7 +12,9 @@ pub fn initialize(path:&Path)->Result<(),String>{
       CREATE TABLE IF NOT EXISTS game_preferences(game_id TEXT PRIMARY KEY,preset TEXT NOT NULL DEFAULT 'balanced' CHECK(preset IN ('performance','balanced','quality')));
       CREATE TABLE IF NOT EXISTS catalog_cache(id INTEGER PRIMARY KEY CHECK (id=1), json TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS bios_installs(bios_id TEXT NOT NULL, system_dir TEXT NOT NULL, json TEXT NOT NULL, PRIMARY KEY(bios_id,system_dir));
-      CREATE TABLE IF NOT EXISTS control_profiles(scope TEXT PRIMARY KEY, json TEXT NOT NULL);")
+      CREATE TABLE IF NOT EXISTS control_profiles(scope TEXT PRIMARY KEY, json TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS input_presets(id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK(kind IN ('keyboard','controller')), name TEXT NOT NULL, device_guid TEXT NOT NULL DEFAULT '', json TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS active_input_presets(kind TEXT PRIMARY KEY CHECK(kind IN ('keyboard','controller')), profile_id TEXT NOT NULL);")
       .map_err(|e|e.to_string())?;
     // Upgrade existing local libraries without losing installations.
     let mut columns=c.prepare("PRAGMA table_info(installed_games)").map_err(|e|e.to_string())?;

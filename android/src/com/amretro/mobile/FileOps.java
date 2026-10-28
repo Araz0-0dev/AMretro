@@ -110,6 +110,21 @@ final class FileOps {
         try{checkHash(part,expected);}catch(Exception e){part.delete();throw e;}
         rejectHtml(part);
     }
+    /** Use distinct temporary files for each server, never combine mirror bytes. */
+    static File downloadWithBackup(String primary,String backup,File part,String expected,String fileName,Progress progress,Runnable switching) throws Exception {
+        try { download(primary,part,expected,progress); validateDownloadedFormat(part,fileName); return part; }
+        catch(Exception first) {
+            if(backup==null||backup.trim().isEmpty()||backup.equals(primary))throw first;
+            if(switching!=null)switching.run();
+            File mirror=new File(part.getParentFile(),part.getName()+".mirror");
+            try {download(backup,mirror,expected,progress);validateDownloadedFormat(mirror,fileName);return mirror;}
+            catch(Exception second){throw new IOException("دانلود از هر دو آدرس ناموفق بود؛ لینک‌ها و SHA-256 را بررسی کن.",second);}
+        }
+    }
+    private static void validateDownloadedFormat(File file,String name) throws IOException {
+        if(name!=null&&name.toLowerCase(Locale.US).endsWith(".zip")&&!isZip(file))throw new IOException("فایل ZIP دانلودشده معتبر نیست.");
+    }
+    static boolean archiveIsGame(String console){return "arcade".equals(console)||"neogeo".equals(console)||"naomi".equals(console)||"dos".equals(console);}
     private static void rejectHtml(File part) throws IOException {
         try(InputStream in=new FileInputStream(part)){
             byte[] first=new byte[256];int n=in.read(first);String sample=n>0?new String(first,0,n,"UTF-8").trim().toLowerCase(Locale.US):"";
@@ -155,10 +170,17 @@ final class FileOps {
         if(n.endsWith(".md")||n.endsWith(".gen")||n.endsWith(".smd")||n.endsWith(".bin"))return "genesis";
         return "";
     }
-    static File chooseGame(File root,String console) throws IOException {
-        List<File> files=new ArrayList<>(); collect(root,files);String[] order=extensions(console).split(",");
-        for(String ext:order)for(File f:files)if(f.getName().toLowerCase(Locale.US).endsWith("."+ext))return f;
-        throw new IOException("فایل بازی سازگار در بسته پیدا نشد.");
+    static File chooseGame(File root,String console) throws IOException {return chooseGame(root,console,"");}
+    static File chooseGame(File root,String console,String configuredExtensions) throws IOException {
+        List<File> files=new ArrayList<>();collect(root,files);
+        String configured=configuredExtensions==null?"":configuredExtensions.trim();
+        String[] order=(configured.isEmpty()?extensions(console):configured).toLowerCase(Locale.US).split(",");
+        for(String raw:order){
+            String ext=raw.trim().replaceFirst("^\\.","");
+            if(!ext.matches("[a-z0-9]{1,12}")||ext.equals("7z")||ext.equals("rar")||(ext.equals("zip")&&!archiveIsGame(console)))continue;
+            for(File f:files)if(f.getName().toLowerCase(Locale.US).endsWith("."+ext))return f;
+        }
+        throw new IOException("فایل بازی سازگار در بسته پیدا نشد؛ پسوندهای کنسول را بررسی کن.");
     }
     static void collect(File dir,List<File> files) throws IOException {
         File[] entries=dir.listFiles();if(entries==null)throw new IOException("پوشهٔ بازی خوانده نشد.");

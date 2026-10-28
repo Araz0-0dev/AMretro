@@ -115,6 +115,7 @@ public final class MainActivity extends Activity {
                 for(int i=0;i<part.length();i++)all.put(part.getJSONObject(i));if(part.length()==0)break;
             }
             send("catalog",all);
+            try{JSONObject systems=new JSONObject(readUrl(API+"/api/consoles",4*1024*1024));send("consoles",systems.getJSONArray("data"));}catch(Exception ignored){/* Games remain usable if the systems list is unavailable. */}
         }catch(Exception e){send("catalogError","ارتباط با کاتالوگ برقرار نشد؛ بازی‌های نصب‌شده همچنان در کتابخانه هستند.");}
     }
     private void ensureBios(String console) throws Exception {
@@ -141,25 +142,29 @@ public final class MainActivity extends Activity {
         try{
             String gameId=id(raw);if(store.get(gameId)!=null)throw new IOException("این بازی از قبل در کتابخانه است.");
             JSONObject g=new JSONObject(readUrl(API+"/api/games/"+gameId,4*1024*1024)).getJSONObject("data");String console=field(g,"console_id");
+            if("unsupported".equals(field(g,"console_core")))throw new IOException("این کنسول در نسخهٔ فعلی AMretro پشتیبانی نمی‌شود.");
             message("در حال بررسی BIOS کنسول…");ensureBios(console);
             String name=FileOps.safeName(field(g,"file_name"));if(name.equals("game.bin"))name=FileOps.safeName(Uri.parse(field(g,"download_url")).getLastPathSegment());
             if(name.toLowerCase(Locale.US).endsWith(".7z")||name.toLowerCase(Locale.US).endsWith(".rar"))throw new IOException("در اندروید ZIP و فایل خام پشتیبانی می‌شوند؛ 7z و RAR هنوز نه.");
-            File temp=new File(getCacheDir(),"game-"+gameId+".part");message("در حال دانلود بازی…");FileOps.download(field(g,"download_url"),temp,field(g,"sha256"),this::progress);
-            installCopied(temp,name,gameId,field(g,"title"),console,field(g,"console_core"),field(g,"cover_url"));temp.delete();
+            File primary=new File(getCacheDir(),"game-"+gameId+".part");message("در حال دانلود بازی…");
+            File temp=FileOps.downloadWithBackup(field(g,"download_url"),field(g,"backup_url"),primary,field(g,"sha256"),name,this::progress,
+                ()->message("لینک اصلی کار نکرد؛ در حال امتحان لینک پشتیبان…"));
+            installCopied(temp,name,gameId,field(g,"title"),console,field(g,"console_core"),field(g,"cover_url"),field(g,"console_extensions"));
+            primary.delete();new File(primary.getParentFile(),primary.getName()+".mirror").delete();
             sendLibrary();message("بازی نصب شد. "+(nativeConsole(console)?"با دکمه‌های لمسی آمادهٔ اجراست.":"برای اجرا به RetroArch و هستهٔ مربوط نیاز است."));
         }catch(Exception e){message(e.getMessage()==null?"نصب بازی ناموفق بود.":e.getMessage());}
     }
-    private void installCopied(File input,String fileName,String gameId,String title,String console,String core,String cover) throws Exception {
+    private void installCopied(File input,String fileName,String gameId,String title,String console,String core,String cover,String extensions) throws Exception {
         File games=new File(getFilesDir(),"games"),finalDir=new File(games,gameId),stage=new File(getCacheDir(),"stage-"+gameId);
         if(finalDir.exists())throw new IOException("پوشهٔ بازی از قبل وجود دارد و بازنویسی نمی‌شود.");FileOps.deleteTree(stage);if(!stage.mkdirs())throw new IOException("ساخت پوشهٔ نصب ممکن نشد.");
         try{
             boolean zip=FileOps.isZip(input);
-            if(zip&&!"arcade".equals(console))FileOps.unzip(input,stage);
+            if(zip&&!FileOps.archiveIsGame(console))FileOps.unzip(input,stage);
             else {if(fileName.toLowerCase(Locale.US).endsWith(".zip")&&!zip)throw new IOException("فایل ZIP معتبر نیست.");try(InputStream in=new FileInputStream(input);OutputStream out=new FileOutputStream(new File(stage,FileOps.safeName(fileName)))){FileOps.copy(in,out,FileOps.MAX_DOWNLOAD,null);}}
-            File selected=FileOps.chooseGame(stage,console);String relative=stage.toURI().relativize(selected.toURI()).getPath();if(relative.isEmpty())throw new IOException("مسیر بازی پیدا نشد.");
+            File selected=FileOps.chooseGame(stage,console,extensions);String relative=stage.toURI().relativize(selected.toURI()).getPath();if(relative.isEmpty())throw new IOException("مسیر بازی پیدا نشد.");
             if(!games.exists()&&!games.mkdirs())throw new IOException("ساخت کتابخانه ممکن نشد.");
             if(!stage.renameTo(finalDir))throw new IOException("انتقال بازی به کتابخانه ممکن نشد.");
-            try{store.add(gameId,title.isEmpty()?fileName:title,console,core.isEmpty()?"mgba":core,new File(finalDir,relative).getAbsolutePath(),cover);}catch(Exception e){FileOps.deleteTree(finalDir);throw e;}
+            try{store.add(gameId,title.isEmpty()?fileName:title,console,core,new File(finalDir,relative).getAbsolutePath(),cover);}catch(Exception e){FileOps.deleteTree(finalDir);throw e;}
         }finally{FileOps.deleteTree(stage);}
     }
     private void showBiosManager(){
@@ -242,7 +247,7 @@ public final class MainActivity extends Activity {
             message("در حال بررسی BIOS منتشرشده…");ensureBios(console);
             String title=name.replaceFirst("(?i)\\.(zip|gb|gbc|gba|nes|md|gen|smd|bin)$","");
             String retroCore="nes".equals(console)?"fceumm":"genesis".equals(console)?"genesis_plus_gx":"mgba";
-            installCopied(temp,name,gameId,title,console,retroCore,"");
+            installCopied(temp,name,gameId,title,console,retroCore,"","");
             sendLibrary();message("بازی به کتابخانه اضافه شد.");
         }catch(Exception e){message(e.getMessage()==null?"افزودن فایل ناموفق بود.":e.getMessage());}
         finally{temp.delete();FileOps.deleteTree(stage);}
