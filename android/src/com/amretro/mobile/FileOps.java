@@ -34,6 +34,35 @@ final class FileOps {
         if(!h.isEmpty()&&!h.matches("(?i)[0-9a-f]{64}"))throw new IOException("SHA-256 ثبت‌شده نامعتبر است.");
         if(!h.isEmpty()&&!sha256(file).equalsIgnoreCase(h))throw new IOException("هش فایل با SHA-256 پنل مطابقت ندارد.");
     }
+    // Return true only for a nonempty existing BIOS whose optional digest matches.
+    // Conflicts are errors, never an instruction to overwrite the existing file.
+    static boolean reuseBios(File target,String hash) throws Exception {
+        if(!target.exists())return false;
+        if(!target.isFile()||target.length()==0)throw new IOException("BIOS موجود معتبر نیست و بازنویسی نمی‌شود.");
+        String expected=hash==null?"":hash.trim();
+        if(!expected.isEmpty()&&!expected.matches("(?i)[0-9a-f]{64}"))throw new IOException("SHA-256 ثبت‌شده نامعتبر است.");
+        if(!expected.isEmpty()&&!sha256(target).equalsIgnoreCase(expected))
+            throw new IOException("BIOS موجود متفاوت است و بازنویسی نشد. برای تعویض، ابتدا آن را در مدیریت BIOS حذف کن.");
+        return true;
+    }
+    /** Caller serializes access to the private system directory. Returns false on safe reuse. */
+    static boolean installBios(File source,File target) throws Exception {
+        if(!source.isFile()||source.length()==0)throw new IOException("فایل BIOS خالی یا نامعتبر است.");
+        if(isCompressed(source))throw new IOException("BIOS باید فایل تکی و غیرفشرده باشد.");
+        String sourceHash=sha256(source);
+        if(reuseBios(target,sourceHash))return false;
+        File parent=target.getParentFile();
+        if(parent==null||(!parent.isDirectory()&&!parent.mkdirs()))throw new IOException("پوشهٔ BIOS ساخته نشد.");
+        File staged=new File(parent,target.getName()+".new-"+UUID.randomUUID());
+        try {
+            try(InputStream in=new FileInputStream(source);FileOutputStream out=new FileOutputStream(staged)){
+                copy(in,out,MAX_DOWNLOAD,null);out.getFD().sync();
+            }
+            if(reuseBios(target,sourceHash))return false;
+            if(!staged.renameTo(target))throw new IOException("نصب BIOS ممکن نشد و فایل قبلی بازنویسی نشد.");
+            return true;
+        } finally { staged.delete(); }
+    }
     static void copy(InputStream in,OutputStream out,long limit,Progress progress) throws IOException {
         byte[] buf=new byte[65536];long total=0;int n;
         while((n=in.read(buf))!=-1){ if(n==0)continue;total+=n;if(total>limit)throw new IOException("فایل از سقف مجاز اندروید بزرگ‌تر است.");out.write(buf,0,n);if(progress!=null)progress.report(total,-1); }
@@ -54,7 +83,7 @@ final class FileOps {
         HttpURLConnection connection=null;boolean restarted=false;
         for(int redirects=0;redirects<=5;redirects++){
             if(!"https".equalsIgnoreCase(u.getProtocol()))throw new IOException("در اندروید لینک دانلود امن HTTPS لازم است.");
-            connection=(HttpURLConnection)u.openConnection();connection.setConnectTimeout(25000);connection.setReadTimeout(45000);connection.setInstanceFollowRedirects(false);connection.setRequestProperty("User-Agent","AMretro-Android/0.1");
+            connection=(HttpURLConnection)u.openConnection();connection.setConnectTimeout(25000);connection.setReadTimeout(45000);connection.setInstanceFollowRedirects(false);connection.setRequestProperty("User-Agent","AMretro-Android/0.2");
             if(offset>0)connection.setRequestProperty("Range","bytes="+offset+"-");
             int code=connection.getResponseCode();
             if(code==301||code==302||code==303||code==307||code==308){String location=connection.getHeaderField("Location");connection.disconnect();if(location==null)throw new IOException("لینک تغییر مسیر نامعتبر دارد.");u=new URL(u,location);connection=null;continue;}
@@ -90,6 +119,13 @@ final class FileOps {
     static boolean isZip(File f) throws IOException {
         try(InputStream in=new FileInputStream(f)){byte[] b=new byte[4];return in.read(b)==4&&b[0]=='P'&&b[1]=='K'&&((b[2]==3&&b[3]==4)||(b[2]==5&&b[3]==6));}
     }
+    static boolean isCompressed(File file) throws IOException {
+        byte[] b=new byte[8];int n;
+        try(InputStream in=new FileInputStream(file)){n=in.read(b);}
+        return n>=2&&(b[0]&255)==0x50&&(b[1]&255)==0x4b ||
+               n>=6&&(b[0]&255)==0x37&&(b[1]&255)==0x7a&&(b[2]&255)==0xbc&&(b[3]&255)==0xaf&&(b[4]&255)==0x27&&(b[5]&255)==0x1c ||
+               n>=6&&(b[0]&255)==0x52&&(b[1]&255)==0x61&&(b[2]&255)==0x72&&(b[3]&255)==0x21&&(b[4]&255)==0x1a&&(b[5]&255)==0x07;
+    }
     static void unzip(File zip,File dest) throws IOException {
         if(!dest.exists()&&!dest.mkdirs())throw new IOException("ساخت پوشهٔ نصب ممکن نیست.");
         long expanded=0;int count=0;byte[] buf=new byte[65536];
@@ -109,6 +145,15 @@ final class FileOps {
     }
     static String extensions(String console) {
         switch(console){case "gb":return "gb";case "gbc":return "gbc,gb";case "gba":return "gba";case "nes":return "nes";case "snes":return "sfc,smc";case "genesis":return "md,gen,smd,bin";case "n64":return "z64,n64,v64";case "ps1":return "m3u,cue,chd,pbp,bin";case "psp":return "iso,cso,chd";default:return "zip";}
+    }
+    // Manual import is intentionally restricted to the bundled cores. A .bin is
+    // treated as a Mega Drive cartridge; PS1 disc images must use the catalog.
+    static String importConsole(String name) {
+        String n=name.toLowerCase(Locale.US);
+        if(n.endsWith(".gb"))return "gb";if(n.endsWith(".gbc"))return "gbc";if(n.endsWith(".gba"))return "gba";
+        if(n.endsWith(".nes"))return "nes";
+        if(n.endsWith(".md")||n.endsWith(".gen")||n.endsWith(".smd")||n.endsWith(".bin"))return "genesis";
+        return "";
     }
     static File chooseGame(File root,String console) throws IOException {
         List<File> files=new ArrayList<>(); collect(root,files);String[] order=extensions(console).split(",");

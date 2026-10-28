@@ -15,7 +15,8 @@ pub fn launch(settings:&AppSettings,game:&InstalledGame,data:&Path,db_path:&Path
     let core=Path::new(&settings.cores_dir).join(format!("{stem}.{ext}"));
     if !core.is_file(){return Err(format!("هسته RetroArch پیدا نشد: {}",core.display()))}
     crate::install::validate_id(&game.id)?;let dir=data.join("game-configs");fs::create_dir_all(&dir).map_err(|e|e.to_string())?;let config=dir.join(format!("{}.cfg",game.id));let mut contents=preset_config(&game.preset,&settings.system_dir)?;
-    if let Some(profile)=crate::controls::effective(db_path,&game.id)? {contents.push_str(&crate::controls::generate(data,&game.id,Path::new(&game.game_path),&core,&profile)?);}
+    let profile=crate::controls::effective(db_path,&game.id)?;
+    contents.push_str(&crate::controls::generate(data,&game.id,Path::new(&game.game_path),&core,&profile)?);
     fs::write(&config,contents).map_err(|e|e.to_string())?;
     Command::new(&settings.retroarch_path).arg("-L").arg(core).arg(&game.game_path).arg("--appendconfig").arg(config).spawn().map_err(|e|format!("RetroArch اجرا نشد؛ مسیر آن را بررسی کن: {e}"))?;Ok(())
 }

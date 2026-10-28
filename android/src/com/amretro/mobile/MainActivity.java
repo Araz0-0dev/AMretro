@@ -19,15 +19,16 @@ import java.util.concurrent.Executors;
 
 public final class MainActivity extends Activity {
     private static final String API="https://retro-hub-68aa04.am0u0dev.workers.dev";
-    private static final int PICK_GAME=41;
+    private static final int PICK_GAME=41, PICK_BIOS=42;
     private static final Object BIOS_INSTALL_LOCK=new Object();
+    private String pendingBiosName;
     private final ExecutorService worker=Executors.newSingleThreadExecutor();
     private WebView web;
     private GameStore store;
     private volatile long lastProgress;
 
     @Override public void onCreate(Bundle saved) {
-        super.onCreate(saved);store=new GameStore(this);web=new WebView(this);
+        super.onCreate(saved);if(saved!=null)pendingBiosName=saved.getString("pendingBiosName");store=new GameStore(this);web=new WebView(this);
         web.setBackgroundColor(0xff0a0e19);
         WebSettings s=web.getSettings();s.setJavaScriptEnabled(true);s.setDomStorageEnabled(false);s.setAllowFileAccess(true);s.setAllowContentAccess(false);
         s.setAllowFileAccessFromFileURLs(false);s.setAllowUniversalAccessFromFileURLs(false);s.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
@@ -53,6 +54,7 @@ public final class MainActivity extends Activity {
             .setPositiveButton("بله، ثبت کن",(d,w)->{store.record(pending,duration);sendLibrary();message("فعالیت محلی ثبت شد.");})
             .setNegativeButton("خیر",(d,w)->{}).show();
     }
+    @Override protected void onSaveInstanceState(Bundle out){if(pendingBiosName!=null)out.putString("pendingBiosName",pendingBiosName);super.onSaveInstanceState(out);}
     @Override protected void onDestroy(){worker.shutdown();if(store!=null)store.close();if(web!=null){web.removeJavascriptInterface("Android");web.destroy();}super.onDestroy();}
     private void send(String type,Object data){
         String value=data instanceof JSONObject||data instanceof JSONArray?data.toString():JSONObject.quote(String.valueOf(data));
@@ -62,7 +64,7 @@ public final class MainActivity extends Activity {
     private void message(String text){send("message",text);}
     private static String field(JSONObject o,String key){String v=o.optString(key,"");return "null".equals(v)?"":v;}
     private static String id(String raw) throws IOException {if(raw==null||!raw.matches("[A-Za-z0-9_-]{1,100}"))throw new IOException("شناسهٔ بازی معتبر نیست.");return raw;}
-    private static boolean nativeConsole(String c){return "gb".equals(c)||"gbc".equals(c)||"gba".equals(c);}
+    private static boolean nativeConsole(String c){return "gb".equals(c)||"gbc".equals(c)||"gba".equals(c)||"nes".equals(c)||"genesis".equals(c);}
 
     public final class Bridge {
         @JavascriptInterface public void syncCatalog(){worker.execute(() -> sync());}
@@ -83,13 +85,21 @@ public final class MainActivity extends Activity {
         @JavascriptInterface public void clearRa(){new SecretBox(MainActivity.this).clear();message("کلید RetroAchievements از این دستگاه پاک شد.");}
         @JavascriptInterface public void openRaHelp(){runOnUiThread(() -> {try{startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse("https://retroachievements.org/controlpanel.php")));}catch(Exception e){message("مرورگر در دسترس نیست.");}});}
         @JavascriptInterface public void openRetroSite(){runOnUiThread(() -> {try{startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse("https://www.retroarch.com/")));}catch(Exception e){message("مرورگر در دسترس نیست.");}});}
+        @JavascriptInterface public void configureControls(){runOnUiThread(() -> ControlSettings.show(MainActivity.this));}
+        @JavascriptInterface public void manageBios(){runOnUiThread(() -> showBiosManager());}
+        @JavascriptInterface public void showLicenses(){runOnUiThread(() -> {
+            try(InputStream in=getAssets().open("legal/THIRD-PARTY-LICENSES.txt");ByteArrayOutputStream out=new ByteArrayOutputStream()){
+                FileOps.copy(in,out,256*1024,null);
+                new android.app.AlertDialog.Builder(MainActivity.this).setTitle("مجوزهای اجزای متن‌باز").setMessage(out.toString("UTF-8")).setPositiveButton("بستن",(d,w)->{}).show();
+            }catch(Exception e){message("نمایش مجوزها ممکن نشد.");}
+        });}
         @JavascriptInterface public void removeGame(String raw){worker.execute(() -> remove(raw));}
     }
     private static String readUrl(String address,int max) throws Exception {
         URL url=new URL(address);HttpURLConnection c=null;
         for(int redirect=0;redirect<=5;redirect++){
             if(!"https".equalsIgnoreCase(url.getProtocol()))throw new IOException("اتصال امن HTTPS لازم است.");
-            c=(HttpURLConnection)url.openConnection();c.setInstanceFollowRedirects(false);c.setConnectTimeout(20000);c.setReadTimeout(30000);c.setRequestProperty("User-Agent","AMretro-Android/0.1");
+            c=(HttpURLConnection)url.openConnection();c.setInstanceFollowRedirects(false);c.setConnectTimeout(20000);c.setReadTimeout(30000);c.setRequestProperty("User-Agent","AMretro-Android/0.2");
             int code=c.getResponseCode();
             if(code==301||code==302||code==303||code==307||code==308){String location=c.getHeaderField("Location");c.disconnect();if(location==null)throw new IOException("تغییر مسیر نامعتبر است.");url=new URL(url,location);c=null;continue;}
             if(code<200||code>=300){c.disconnect();throw new IOException("خطای سرویس (HTTP "+code+").");}break;
@@ -118,28 +128,11 @@ public final class MainActivity extends Activity {
             String lower=name.toLowerCase(Locale.US);if(lower.endsWith(".zip")||lower.endsWith(".7z")||lower.endsWith(".rar"))throw new IOException("BIOS فشرده در نسخهٔ اندروید پشتیبانی نمی‌شود؛ فایل تکی ثبت کن.");
             if(path.isEmpty())path=name;else if(!new File(path).getName().contains("."))path=path.replaceAll("/+$","")+"/"+name;
             File target=FileOps.child(system,path);
-            if(target.exists()){
-                if(!target.isFile()||target.length()==0)throw new IOException("BIOS موجود معتبر نیست و بازنویسی نمی‌شود.");
-                FileOps.checkHash(target,hash);continue;
-            }
+            if(FileOps.reuseBios(target,hash))continue;
             message("در حال دریافت BIOS منتشرشده برای کنسول…");
             File temp=new File(getCacheDir(),"bios-"+bid+".part");FileOps.download(field(b,"download_url"),temp,hash,null);
-            if(FileOps.isZip(temp))throw new IOException("BIOS باید فایل تکی باشد، نه ZIP.");
-            File parent=target.getParentFile();if(!parent.exists()&&!parent.mkdirs())throw new IOException("پوشهٔ BIOS ساخته نشد.");
-            File copy=new File(parent,target.getName()+".new-"+UUID.randomUUID());
-            try {
-                try(InputStream in=new FileInputStream(temp);FileOutputStream out=new FileOutputStream(copy)){
-                    FileOps.copy(in,out,FileOps.MAX_DOWNLOAD,null);out.getFD().sync();
-                }
-                // Every in-process writer holds BIOS_INSTALL_LOCK; target is app-private.
-                // Hard links are forbidden to untrusted Android apps by SELinux.
-                if(target.exists()) {
-                    if(!target.isFile() || target.length()==0)throw new IOException("BIOS موجود معتبر نیست و بازنویسی نمی‌شود.");
-                    FileOps.checkHash(target,hash);
-                } else if(!copy.renameTo(target)) {
-                    throw new IOException("نصب BIOS ممکن نشد و فایل قبلی بازنویسی نشد.");
-                }
-            } finally { copy.delete(); }
+            // The same staged, non-overwriting installer handles panel and local BIOS files.
+            FileOps.installBios(temp,target);
             temp.delete();
         }
     }
@@ -169,9 +162,68 @@ public final class MainActivity extends Activity {
             try{store.add(gameId,title.isEmpty()?fileName:title,console,core.isEmpty()?"mgba":core,new File(finalDir,relative).getAbsolutePath(),cover);}catch(Exception e){FileOps.deleteTree(finalDir);throw e;}
         }finally{FileOps.deleteTree(stage);}
     }
+    private void showBiosManager(){
+        String[] labels={"Game Boy · gb_bios.bin", "Game Boy Color · gbc_bios.bin", "Game Boy Advance · gba_bios.bin",
+            "PlayStation ژاپن · scph5500.bin", "PlayStation آمریکا · scph5501.bin", "PlayStation اروپا · scph5502.bin",
+            "کنسول دیگر · با نام فایل اصلی", "نمایش فایل‌های موجود"};
+        String[] names={"gb_bios.bin","gbc_bios.bin","gba_bios.bin","scph5500.bin","scph5501.bin","scph5502.bin",""};
+        new android.app.AlertDialog.Builder(this).setTitle("مدیریت BIOS شخصی")
+            .setItems(labels,(d,which)->{
+                if(which==labels.length-1){showBiosFiles();return;}
+                pendingBiosName=names[which];Intent i=new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                i.addCategory(Intent.CATEGORY_OPENABLE);i.setType("*/*");
+                try{startActivityForResult(i,PICK_BIOS);}catch(Exception e){pendingBiosName=null;message("فایل‌گزین اندروید در دسترس نیست.");}
+            }).setNegativeButton("بستن",(d,w)->{}).show();
+    }
+    private void showBiosFiles(){
+        try {
+            File root=new File(getFilesDir(),"system");List<File> files=new ArrayList<>();if(root.isDirectory())FileOps.collect(root,files);
+            if(files.isEmpty()){new android.app.AlertDialog.Builder(this).setTitle("BIOSهای موجود").setMessage("هنوز BIOS شخصی وجود ندارد.").setPositiveButton("بستن",(d,w)->{}).show();return;}
+            String[] rows=new String[files.size()];
+            for(int i=0;i<rows.length;i++){File f=files.get(i);rows[i]=root.toURI().relativize(f.toURI()).getPath()+"  ·  "+f.length()+" bytes";}
+            new android.app.AlertDialog.Builder(this).setTitle("BIOSهای خصوصی · برای حذف انتخاب کن")
+                .setItems(rows,(d,which)->new android.app.AlertDialog.Builder(this).setTitle("حذف این نسخه از BIOS؟")
+                    .setMessage(rows[which]+"\n\nفقط نسخهٔ خصوصی AMretro حذف می‌شود؛ فایل اصلی انتخاب‌شده در دستگاه پاک نمی‌شود.")
+                    .setPositiveButton("حذف",(x,y)->{
+                        synchronized(BIOS_INSTALL_LOCK){if(files.get(which).delete())message("نسخهٔ خصوصی BIOS حذف شد.");else message("حذف BIOS ممکن نشد.");}
+                        showBiosFiles();
+                    }).setNegativeButton("انصراف",(x,y)->showBiosFiles()).show())
+                .setNegativeButton("بستن",(d,w)->{}).show();
+        }catch(Exception e){message("خواندن فهرست BIOS ممکن نشد.");}
+    }
     @Override protected void onActivityResult(int request,int result,Intent data){
-        super.onActivityResult(request,result,data);if(request!=PICK_GAME||result!=RESULT_OK||data==null||data.getData()==null)return;
+        super.onActivityResult(request,result,data);
+        if(request==PICK_BIOS){
+            String name=pendingBiosName;pendingBiosName=null;
+            if(name!=null&&result==RESULT_OK&&data!=null&&data.getData()!=null){Uri uri=data.getData();worker.execute(() -> importBiosUri(uri,name));}
+            return;
+        }
+        if(request!=PICK_GAME||result!=RESULT_OK||data==null||data.getData()==null)return;
         Uri uri=data.getData();worker.execute(() -> importUri(uri));
+    }
+    private void importBiosUri(Uri uri,String selectedName){
+        File temp=new File(getCacheDir(),"bios-personal-"+UUID.randomUUID()+".part");
+        try {
+            String original="";
+            try(Cursor c=getContentResolver().query(uri,new String[]{OpenableColumns.DISPLAY_NAME},null,null,null)){if(c!=null&&c.moveToFirst())original=c.getString(0);}
+            if(original==null||original.trim().isEmpty())throw new IOException("نام فایل BIOS مشخص نیست.");
+            String lower=original.toLowerCase(Locale.US);
+            if(lower.endsWith(".zip")||lower.endsWith(".7z")||lower.endsWith(".rar"))throw new IOException("BIOS باید فایل تکی و غیرفشرده باشد.");
+            String name=selectedName.isEmpty()?FileOps.safeName(original):selectedName;
+            try(InputStream in=getContentResolver().openInputStream(uri);FileOutputStream out=new FileOutputStream(temp)){
+                if(in==null)throw new IOException("فایل BIOS انتخاب‌شده خوانده نشد.");FileOps.copy(in,out,64L*1024*1024,null);out.getFD().sync();
+            }
+            long size=temp.length();
+            if(("gb_bios.bin".equals(name)&&size!=256)||("gbc_bios.bin".equals(name)&&size!=2304)||
+               ("gba_bios.bin".equals(name)&&size!=16384)||(name.startsWith("scph550")&&size!=524288))
+                throw new IOException("اندازهٔ فایل با BIOS انتخاب‌شده سازگار نیست؛ فایل و کنسول را بررسی کن.");
+            synchronized(BIOS_INSTALL_LOCK){
+                File root=new File(getFilesDir(),"system");if(!root.isDirectory()&&!root.mkdirs())throw new IOException("پوشهٔ BIOS ساخته نشد.");
+                boolean installed=FileOps.installBios(temp,FileOps.child(root,name));
+                message(installed?"BIOS به پوشهٔ خصوصی برنامه اضافه شد؛ تنها هسته‌های سازگار از آن استفاده می‌کنند.":"همین BIOS از قبل موجود بود؛ دوباره نصب نشد.");
+            }
+        }catch(Exception e){message(e.getMessage()==null?"افزودن BIOS ممکن نشد.":e.getMessage());}
+        finally{temp.delete();}
     }
     private void importUri(Uri uri){
         String gameId="local-"+UUID.randomUUID().toString();File temp=new File(getCacheDir(),gameId+".part"),stage=new File(getCacheDir(),"inspect-"+gameId);
@@ -179,16 +231,18 @@ public final class MainActivity extends Activity {
             String name="game.gba";
             try(Cursor c=getContentResolver().query(uri,new String[]{OpenableColumns.DISPLAY_NAME},null,null,null)){if(c!=null&&c.moveToFirst())name=c.getString(0);}
             name=FileOps.safeName(name);String lower=name.toLowerCase(Locale.US);
-            if(!(lower.endsWith(".gb")||lower.endsWith(".gbc")||lower.endsWith(".gba")||lower.endsWith(".zip")))throw new IOException("برای افزودن دستی، GB، GBC، GBA یا ZIP انتخاب کن.");
+            if(FileOps.importConsole(lower).isEmpty()&&!lower.endsWith(".zip"))throw new IOException("برای افزودن دستی، فایل GB، GBC، GBA، NES، Mega Drive یا ZIP انتخاب کن.");
             message("در حال بررسی فایل انتخاب‌شده…");try(InputStream in=getContentResolver().openInputStream(uri);OutputStream out=new FileOutputStream(temp)){if(in==null)throw new IOException("فایل انتخاب‌شده خوانده نشد.");FileOps.copy(in,out,FileOps.MAX_DOWNLOAD,null);}
             String console;
             if(lower.endsWith(".zip")){
                 if(!FileOps.isZip(temp))throw new IOException("آرشیو ZIP معتبر نیست.");FileOps.unzip(temp,stage);List<File> files=new ArrayList<>();FileOps.collect(stage,files);
-                Set<String> kinds=new HashSet<>();for(File f:files){String n=f.getName().toLowerCase(Locale.US);if(n.endsWith(".gb"))kinds.add("gb");if(n.endsWith(".gbc"))kinds.add("gbc");if(n.endsWith(".gba"))kinds.add("gba");}
-                if(kinds.size()!=1)throw new IOException("ZIP باید بازی‌های فقط یک نوع کنسول GB، GBC یا GBA داشته باشد.");console=kinds.iterator().next();
-            }else console=lower.endsWith(".gbc")?"gbc":lower.endsWith(".gba")?"gba":"gb";
+                Set<String> kinds=new HashSet<>();for(File f:files){String kind=FileOps.importConsole(f.getName());if(!kind.isEmpty())kinds.add(kind);}
+                if(kinds.size()!=1)throw new IOException("ZIP باید بازی‌های فقط یک کنسول پشتیبانی‌شده را داشته باشد.");console=kinds.iterator().next();
+            }else console=FileOps.importConsole(lower);
             message("در حال بررسی BIOS منتشرشده…");ensureBios(console);
-            String title=name.replaceFirst("(?i)\\.(zip|gb|gbc|gba)$","");installCopied(temp,name,gameId,title,console,"mgba","");
+            String title=name.replaceFirst("(?i)\\.(zip|gb|gbc|gba|nes|md|gen|smd|bin)$","");
+            String retroCore="nes".equals(console)?"fceumm":"genesis".equals(console)?"genesis_plus_gx":"mgba";
+            installCopied(temp,name,gameId,title,console,retroCore,"");
             sendLibrary();message("بازی به کتابخانه اضافه شد.");
         }catch(Exception e){message(e.getMessage()==null?"افزودن فایل ناموفق بود.":e.getMessage());}
         finally{temp.delete();FileOps.deleteTree(stage);}

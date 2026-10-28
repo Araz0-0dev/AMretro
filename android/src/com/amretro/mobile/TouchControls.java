@@ -11,17 +11,22 @@ import android.view.View;
 final class TouchControls extends View {
     interface Listener { void onButtons(int mask); }
     private final Listener listener;
+    private final boolean genesis;
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private int mask;
-    private float u, leftX, leftY, ax, ay, bx, by, selectX, startX, smallY;
-    TouchControls(Context context, Listener listener) { super(context); this.listener = listener; setFocusable(false); }
+    private float u, leftX, leftY, ax, ay, bx, by, cx, cy, selectX, startX, smallY;
+    TouchControls(Context context, String console, Listener listener) { super(context); this.listener = listener; this.genesis="genesis".equals(console); setFocusable(false); }
     private void positions() {
         float w = getWidth(), h = getHeight();
         u = Math.min(w / 9.7f, h / 5.9f);
         leftX = 1.55f * u; leftY = h - 1.55f * u;
-        ax = w - 1.12f * u; ay = h - 1.75f * u;
-        bx = w - 2.28f * u; by = h - 1.10f * u;
-        selectX = w / 2 - 0.60f * u; startX = w / 2 + 0.60f * u; smallY = h - 0.54f * u;
+        if(genesis) {
+            ax=w-2.45f*u; bx=w-1.53f*u; cx=w-.61f*u; ay=by=cy=h-1.25f*u;
+        } else {
+            ax = w - 1.12f * u; ay = h - 1.75f * u;
+            bx = w - 2.28f * u; by = h - 1.10f * u;
+        }
+        selectX = w / 2 - 0.60f * u; startX = genesis?w/2:w/2 + 0.60f * u; smallY = h - 0.54f * u;
     }
     private void circle(Canvas c, float x, float y, float r, String text, int bits) {
         paint.setColor((mask & bits) != 0 ? 0xb5a98cff : 0x6677869f); c.drawCircle(x, y, r, paint);
@@ -40,9 +45,14 @@ final class TouchControls extends View {
         paint.setColor(0xe8ffffff); paint.setTextAlign(Paint.Align.CENTER); paint.setTextSize(.40f * u);
         c.drawText("▲", leftX, leftY - .52f*u, paint); c.drawText("▼", leftX, leftY + .78f*u, paint);
         c.drawText("◀", leftX - .63f*u, leftY + .14f*u, paint); c.drawText("▶", leftX + .63f*u, leftY + .14f*u, paint);
-        circle(c, ax, ay, .52f*u, "A", 1<<8); circle(c, bx, by, .52f*u, "B", 1);
-        pill(c, selectX, smallY, "SELECT", 1<<2); pill(c, startX, smallY, "START", 1<<3);
-        pill(c, .78f*u, .42f*u, "L", 1<<10); pill(c, getWidth()-.78f*u, .42f*u, "R", 1<<11);
+        if(genesis) {
+            circle(c, ax, ay, .40f*u, "A", 1<<1); circle(c, bx, by, .40f*u, "B", 1); circle(c, cx, cy, .40f*u, "C", 1<<8);
+        } else {
+            circle(c, ax, ay, .52f*u, "A", 1<<8); circle(c, bx, by, .52f*u, "B", 1);
+            pill(c, selectX, smallY, "SELECT", 1<<2);
+            pill(c, .78f*u, .42f*u, "L", 1<<10); pill(c, getWidth()-.78f*u, .42f*u, "R", 1<<11);
+        }
+        pill(c, startX, smallY, "START", 1<<3);
     }
     private boolean near(float x, float y, float cx, float cy, float r) { float dx=x-cx, dy=y-cy; return dx*dx+dy*dy<=r*r; }
     private boolean inPill(float x, float y, float cx, float cy) { return Math.abs(x-cx)<.53f*u && Math.abs(y-cy)<.27f*u; }
@@ -56,12 +66,18 @@ final class TouchControls extends View {
                     if (dy < -.28f*u) next |= 1<<4; if (dy > .28f*u) next |= 1<<5;
                     if (dx < -.28f*u) next |= 1<<6; if (dx > .28f*u) next |= 1<<7;
                 }
-                if (near(x,y,ax,ay,.66f*u)) next |= 1<<8;
-                if (near(x,y,bx,by,.66f*u)) next |= 1;
-                if (inPill(x,y,selectX,smallY)) next |= 1<<2;
+                if(genesis) {
+                    if(near(x,y,ax,ay,.45f*u)) next |= 1<<1;
+                    if(near(x,y,bx,by,.45f*u)) next |= 1;
+                    if(near(x,y,cx,cy,.45f*u)) next |= 1<<8;
+                } else {
+                    if (near(x,y,ax,ay,.66f*u)) next |= 1<<8;
+                    if (near(x,y,bx,by,.66f*u)) next |= 1;
+                    if (inPill(x,y,selectX,smallY)) next |= 1<<2;
+                    if (inPill(x,y,.78f*u,.42f*u)) next |= 1<<10;
+                    if (inPill(x,y,getWidth()-.78f*u,.42f*u)) next |= 1<<11;
+                }
                 if (inPill(x,y,startX,smallY)) next |= 1<<3;
-                if (inPill(x,y,.78f*u,.42f*u)) next |= 1<<10;
-                if (inPill(x,y,getWidth()-.78f*u,.42f*u)) next |= 1<<11;
             }
         }
         if (next != mask) { mask=next; listener.onButtons(next); invalidate(); }

@@ -28,10 +28,32 @@ public class FileOpsTest {
             try{FileOps.child(root,"../escape");throw new AssertionError("traversal accepted");}catch(IOException good){}
             File good=new File(root,"good.zip");zip(good,"folder/game.gba","gba-test");File dest=new File(root,"install");FileOps.unzip(good,dest);
             check(FileOps.chooseGame(dest,"gba").getName().equals("game.gba"),"select game");
+            check(FileOps.importConsole("Example.GB").equals("gb"),"GB extension");
+            check(FileOps.importConsole("Example.NES").equals("nes"),"NES extension");
+            check(FileOps.importConsole("Example.MD").equals("genesis"),"Mega Drive extension");
+            check(FileOps.importConsole("Example.bin").equals("genesis"),"manual .bin is Mega Drive");
+            check(FileOps.importConsole("Example.iso").isEmpty(),"unsupported manual extension");
+            File md=new File(dest,"folder/demo.gen");Files.write(md.toPath(),new byte[]{1});
+            File nes=new File(dest,"folder/demo.nes");Files.write(nes.toPath(),new byte[]{1});
+            check(FileOps.chooseGame(dest,"genesis").equals(md),"select Mega Drive");
+            check(FileOps.chooseGame(dest,"nes").equals(nes),"select NES");
             File bad=new File(root,"bad.zip");zip(bad,"../escape.gb","bad");try{FileOps.unzip(bad,new File(root,"bad"));throw new AssertionError("zip slip accepted");}catch(IOException expected){}
             check(!new File(root,"escape.gb").exists(),"escaped file");
             File data=new File(dest,"folder/game.gba");String hash=FileOps.sha256(data);FileOps.checkHash(data,hash);
             try{FileOps.checkHash(data,"0".repeat(64));throw new AssertionError("hash mismatch accepted");}catch(IOException expected){}
+            check(FileOps.reuseBios(data,hash),"matching BIOS reused");
+            byte[] before=Files.readAllBytes(data.toPath());
+            try{FileOps.reuseBios(data,"0".repeat(64));throw new AssertionError("BIOS conflict accepted");}catch(IOException expected){}
+            check(Arrays.equals(before,Files.readAllBytes(data.toPath())),"conflicting BIOS unchanged");
+            check(!FileOps.reuseBios(new File(root,"missing-bios.bin"),hash),"missing BIOS not reused");
+            try{FileOps.reuseBios(dest,hash);throw new AssertionError("BIOS directory accepted");}catch(IOException expected){}
+            File biosTarget=new File(root,"system/gb_bios.bin");
+            check(FileOps.installBios(data,biosTarget),"local BIOS installed");
+            check(!FileOps.installBios(data,biosTarget),"identical local BIOS reused");
+            File otherBios=new File(root,"different-bios.bin");Files.write(otherBios.toPath(),new byte[]{9,8,7});
+            try{FileOps.installBios(otherBios,biosTarget);throw new AssertionError("different BIOS replaced target");}catch(IOException expected){}
+            check(Arrays.equals(before,Files.readAllBytes(biosTarget.toPath())),"existing BIOS remains unchanged");
+            try{FileOps.installBios(good,new File(root,"system/compressed.bin"));throw new AssertionError("compressed BIOS accepted");}catch(IOException expected){}
             short[] samples=new short[131072*2];for(int i=0;i<samples.length;i++)samples[i]=(short)i;
             StereoResampler whole=new StereoResampler(131072,48000);short[] a=whole.convert(samples);check(a.length==96000,"output rate");
             StereoResampler partial=new StereoResampler(131072,48000);short[] one=partial.convert(Arrays.copyOfRange(samples,0,20000)),two=partial.convert(Arrays.copyOfRange(samples,20000,samples.length));

@@ -80,4 +80,15 @@ JNIEXPORT jshortArray JNICALL Java_com_amretro_mobile_NativeEmulator_audio(JNIEn
 }
 JNIEXPORT jdouble JNICALL Java_com_amretro_mobile_NativeEmulator_rate(JNIEnv *env, jclass cls) { (void)env; (void)cls; return am_core_sample_rate(); }
 JNIEXPORT jdouble JNICALL Java_com_amretro_mobile_NativeEmulator_fps(JNIEnv *env, jclass cls) { (void)env; (void)cls; return am_core_fps(); }
+JNIEXPORT jboolean JNICALL Java_com_amretro_mobile_NativeEmulator_saveState(JNIEnv *env, jclass cls, jstring path) {
+    (void)cls; if (!path) return JNI_FALSE;
+    const char *p = (*env)->GetStringUTFChars(env, path, NULL); if (!p) return JNI_FALSE;
+    int ok = am_core_save_state(p); (*env)->ReleaseStringUTFChars(env, path, p); return ok ? JNI_TRUE : JNI_FALSE;
+}
+JNIEXPORT jboolean JNICALL Java_com_amretro_mobile_NativeEmulator_loadState(JNIEnv *env, jclass cls, jstring path) {
+    (void)cls; if (!path) return JNI_FALSE;
+    const char *p = (*env)->GetStringUTFChars(env, path, NULL); if (!p) return JNI_FALSE;
+    int ok = am_core_load_state(p); (*env)->ReleaseStringUTFChars(env, path, p); return ok ? JNI_TRUE : JNI_FALSE;
+}
+JNIEXPORT jboolean JNICALL Java_com_amretro_mobile_NativeEmulator_reset(JNIEnv *env, jclass cls) { (void)env; (void)cls; return am_core_reset() ? JNI_TRUE : JNI_FALSE; }
 JNIEXPORT void JNICALL Java_com_amretro_mobile_NativeEmulator_close(JNIEnv *env, jclass cls) { (void)env; (void)cls; am_core_close(); }

@@ -11,6 +11,10 @@ final class NativeEmulator {
     static native short[] audio();
     static native double rate();
     static native double fps();
+    // These operations execute on the emulation thread, never on the UI thread.
+    static native boolean saveState(String path);
+    static native boolean loadState(String path);
+    static native boolean reset();
     static native void close();
     private NativeEmulator() {}
 }

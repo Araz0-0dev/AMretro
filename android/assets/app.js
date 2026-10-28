@@ -24,7 +24,7 @@ if (!NodeList.prototype.forEach) NodeList.prototype.forEach = Array.prototype.fo
   const panel = (t,txt) => { const e=$('div','setting');e.append($('b','',t),$('p','',txt));return e; };
   function empty(titleText,description,withImport){const e=$('div','empty');e.append($('div','empty-icon','✧'),$('h3','',titleText),$('p','',description));if(withImport)e.append(btn('＋ افزودن فایل بازی','secondary',()=>call('importGame')));return e;}
   function consoleName(id){return ({gb:'Game Boy',gbc:'Game Boy Color',gba:'Game Boy Advance',nes:'NES',snes:'SNES',ps1:'PlayStation',psp:'PSP',n64:'Nintendo 64',genesis:'Mega Drive',arcade:'Arcade'})[id]||id||'بازی کلاسیک';}
-  function nativeGame(g){return ['gb','gbc','gba'].includes(g.console_id);}
+  function nativeGame(g){return ['gb','gbc','gba','nes','genesis'].includes(g.console_id);}
   function gameCard(g,installed){
     const card=$('article','game'), imageUrl=g.cover_url||g.icon_url||'';
     if(/^https:\/\//i.test(imageUrl)){const img=$('img','cover');img.alt='';img.loading='lazy';img.src=imageUrl;img.addEventListener('error',()=>{if(img.parentNode)img.parentNode.replaceChild($('div','cover cover-placeholder','✦'),img);});card.append(img);}else card.append($('div','cover cover-placeholder','✦'));
@@ -41,9 +41,9 @@ if (!NodeList.prototype.forEach) NodeList.prototype.forEach = Array.prototype.fo
   function gameList(target,games,installed){const list=$('div','cardlist');games.forEach(g=>list.append(gameCard(g,installed)));target.append(list);}
   function home(root){
     const hero=$('section','hero'), body=$('div','hero-content');body.append($('span','eyebrow','بازی کن، دوباره کشف کن'),$('h1','','هر بازی، یک خاطره'),$('p','','کلاسیک‌های محبوبت را در یک جای دوست‌داشتنی کنار هم داشته باش.'),btn('＋ افزودن بازی','light',()=>call('importGame')));hero.append(body);root.append(hero);
-    const chips=$('div','quick');['لمسی و همراه','GB / GBC / GBA داخلی','RetroArch برای بقیه','تروفی‌های بازیکن'].forEach(x=>chips.append($('span','',x)));root.append(chips);
+    const chips=$('div','quick');['لمسی و همراه','GB / GBA / NES / Mega Drive','RetroArch برای بقیه','تروفی‌های بازیکن'].forEach(x=>chips.append($('span','',x)));root.append(chips);
     const h=section('کتابخانهٔ من',state.library.length?`${state.library.length} بازی آماده است`:'دنیای بازی‌هات از اینجا شروع می‌شود');h.append(btn('نمایش همه','mini secondary',()=>navigate('library')));root.append(h);
-    if(state.library.length)gameList(root,state.library.slice(0,3),true);else root.append(empty('هنوز بازی نداری','یک فایل GB، GBC یا GBA انتخاب کن یا از فروشگاه نصب کن.',true));
+    if(state.library.length)gameList(root,state.library.slice(0,3),true);else root.append(empty('هنوز بازی نداری','یک فایل GB، GBC، GBA، NES یا Mega Drive انتخاب کن یا از فروشگاه نصب کن.',true));
     root.append(section('ویژگی‌های نسخهٔ اندروید','برای تجربه‌ای ساده و همراه'));const features=$('div','feature-grid');
     [['◉','دستهٔ لمسی','روی تصویر بازی'],['♛','تروفی‌ها','فعالیت و RetroAchievements']].forEach(([symbol,t,d])=>{const f=$('div','feature');f.append($('div','symbol',symbol),$('b','',t),$('small','',d));features.append(f);});root.append(features);
   }
@@ -56,17 +56,20 @@ if (!NodeList.prototype.forEach) NodeList.prototype.forEach = Array.prototype.fo
   }
   function library(root){
     root.append(title('کتابخانهٔ من','بازی‌های نصب‌شده، تروفی‌ها و فایل‌های شخصی‌ات در همین دستگاه هستند.'));
-    root.append(btn('＋ افزودن فایل GB / GBC / GBA','',()=>call('importGame')));
+    root.append(btn('＋ افزودن فایل بازی','',()=>call('importGame')));
     root.append(section('بازی‌های من',`${state.library.length} بازی`));
     if(state.library.length)gameList(root,state.library,true);else root.append(empty('کتابخانه خالی است','با افزودن فایل یا نصب از فروشگاه، اولین بازی‌ات را شروع کن.',false));
   }
   function settings(root){
     root.append(title('تنظیمات و راهنما','پیش از شروع بازی، این چند نکته را بدان.'));
-    const a=panel('اجرای داخلی با دستهٔ لمسی','GB، Game Boy Color و Game Boy Advance با هستهٔ mGBA داخل AMretro اجرا می‌شوند. دکمه‌های دوبعدی و لمسی روی بازی قرار می‌گیرند. فایل بازی همراه برنامه نیست.');root.append(a);
-    const b=panel('سایر کنسول‌ها با RetroArch','RetroArch و هستهٔ مناسب را جداگانه نصب کن. در تنظیمات RetroArch، نمایش Overlay را فعال کن و مسیر System/BIOS را روی Download/AMretro/System بگذار. برنامه‌های مختلف RetroArch و نسخه‌های اندروید ممکن است دسترسی متفاوتی به فایل‌ها داشته باشند.');b.append(btn('دریافت و راهنمای RetroArch','mini secondary',()=>call('openRetroSite')));root.append(b);
-    const c=panel('دستاوردهای واقعی RetroAchievements','داخل RetroArch با حساب خودت وارد شو و Achievements را فعال کن. AMretro با Web API Key و شناسهٔ بازی، دستاوردهای واقعی را فقط نمایش می‌دهد؛ بازی داخلی mGBA آن‌ها را باز نمی‌کند.');c.append(btn('راهنمای کلید وب','mini secondary',()=>call('openRaHelp')),btn('پاک‌کردن کلید','mini outline',()=>call('clearRa')));root.append(c);
+    const a=panel('اجرای داخلی با دستهٔ لمسی','GB، GBC، GBA، NES و Mega Drive به‌صورت آزمایشی اجرا می‌شوند. هستهٔ NES هنوز فقط بعضی کارتریج‌ها را پشتیبانی می‌کند؛ سگا فعلاً دستهٔ سه‌دکمه‌ای دارد. فایل بازی همراه برنامه نیست.');root.append(a);
+    const controls=panel('کنترل یکپارچه','در اجرای داخلی، W بالا، S پایین، A چپ و D راست است. از اینجا کلیدها را یک بار برای همهٔ هسته‌های داخلی تغییر بده؛ دکمه‌های پایهٔ دسته و کنترل لمسی نیز فعال‌اند.');controls.append(btn('تنظیم کلیدها','mini secondary',()=>call('configureControls')));root.append(controls);
+    const b=panel('سایر کنسول‌ها با RetroArch','RetroArch و هستهٔ مناسب را جداگانه نصب کن. تنظیم کلیدهای آن جداگانه است. در اندروید ۱۰ یا جدیدتر، AMretro هنگام اجرای RetroArch فایل‌ها را به Download/AMretro می‌فرستد؛ مسیر System/BIOS و Overlay را در خود RetroArch تنظیم کن. دسترسی و سازگاری نسخه‌ها متفاوت است.');b.append(btn('دریافت و راهنمای RetroArch','mini secondary',()=>call('openRetroSite')));root.append(b);
+    const c=panel('دستاوردهای واقعی RetroAchievements','داخل RetroArch با حساب خودت وارد شو و Achievements را فعال کن. AMretro با Web API Key و شناسهٔ بازی، دستاوردهای واقعی را فقط نمایش می‌دهد؛ اجرای داخلی آن‌ها را باز نمی‌کند.');c.append(btn('راهنمای کلید وب','mini secondary',()=>call('openRaHelp')),btn('پاک‌کردن کلید','mini outline',()=>call('clearRa')));root.append(c);
+    root.append(panel('ذخیره و ادامه','در بازی داخلی، منو سه جایگاه ذخیره و بارگذاری دارد. هنگام رفتن به پس‌زمینه نیز حالت موقت ذخیره می‌شود. حذف برنامه همهٔ این داده‌های خصوصی را پاک می‌کند.'));
     root.append(panel('تروفی‌های محلی','چهار رتبهٔ برنز، نقره، طلا و پلاتینیوم بر پایهٔ فعالیت روی همین دستگاه هستند، نه تروفی رسمی RetroAchievements. زمان RetroArch پس از تأیید تو تقریبی ثبت می‌شود. هنوز همگام‌سازی حساب وجود ندارد.'));
-    root.append(panel('BIOS و محدودیت نسخهٔ آزمایشی','پیش از نصب، BIOSهای تکی منتشرشدهٔ همان کنسول بررسی می‌شوند؛ فایل متفاوت بازنویسی نمی‌شود. BIOS فشرده، 7z و RAR فعلاً پشتیبانی نمی‌شوند. برای نصب جدید اینترنت و لینک مستقیم HTTPS لازم است.'));
+    const bios=panel('BIOSهای شخصی','BIOS همراه برنامه نیست. فایل قانونی خودت را اضافه کن؛ mGBA نام‌های استاندارد GB، GBC و GBA را می‌شناسد. فایل یکسان دوباره نصب نمی‌شود و فایل متفاوت روی قبلی نوشته نمی‌شود. وجود BIOS به‌تنهایی به معنی پشتیبانی از کنسول نیست. فایل فشرده پشتیبانی نمی‌شود.');bios.append(btn('مدیریت BIOS','mini secondary',()=>call('manageBios')));root.append(bios);
+    const legal=panel('مجوزهای متن‌باز','مجوز هسته‌ها و فونت همراه برنامه است؛ سورس متناظر در مخزن AMretro منتشر می‌شود.');legal.append(btn('نمایش مجوزها','mini secondary',()=>call('showLicenses')));root.append(legal);
   }
   function render(){clear(screen);const root=$('div','screen');screen.append(root);({home,store,library,settings}[state.tab]||home)(root);}
   function modalHeader(t){const h=$('div','sheet-head');h.append($('h2','',t),btn('×','close',closeModal));content.append(h);}

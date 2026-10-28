@@ -10,7 +10,7 @@ BT=${ANDROID_BUILD_TOOLS_DIR:-"$ANDROID_SDK_ROOT/build-tools/35.0.0"}
 PLATFORM=${ANDROID_PLATFORM_JAR:-"$ANDROID_SDK_ROOT/platforms/android-35/android.jar"}
 TOOLCHAIN="$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64"
 BUILD=${AMRETRO_ANDROID_BUILD_DIR:-"$APP/.build-local"}
-OUT=${AMRETRO_ANDROID_APK:-"$ROOT/releases/AMretro-Android-0.1.0-beta-arm64.apk"}
+OUT=${AMRETRO_ANDROID_APK:-"$ROOT/releases/AMretro-Android-0.2.0-beta-arm64.apk"}
 [ -f "$PLATFORM" ] && [ -x "$BT/aapt" ] && [ -x "$TOOLCHAIN/bin/aarch64-linux-android24-clang" ] || { echo 'Android SDK / NDK paths are invalid.' >&2; exit 1; }
 mkdir -p "$BUILD" "$(dirname "$OUT")"
 rm -rf "$BUILD/classes" "$BUILD/dex" "$BUILD/apk" "$BUILD/unsigned.apk" "$BUILD/aligned.apk"
@@ -18,7 +18,10 @@ mkdir -p "$BUILD/classes" "$BUILD/dex" "$BUILD/apk/lib/arm64-v8a"
 "$TOOLCHAIN/bin/aarch64-linux-android24-clang" -std=c11 -D_POSIX_C_SOURCE=200809L -O2 -fPIC -shared -Wall -Wextra -Werror \
   -Wl,-z,max-page-size=16384 -o "$BUILD/apk/lib/arm64-v8a/libamretro.so" \
   "$APP/native/core_host.c" "$APP/native/android_jni.c" -landroid -llog -ldl
-cp "$APP/jniLibs/arm64-v8a/libmgba_libretro.so" "$BUILD/apk/lib/arm64-v8a/"
+for core in libmgba_libretro.so libnes_libretro.so libares_md_libretro.so; do
+  [ -f "$APP/jniLibs/arm64-v8a/$core" ] || { echo "Missing bundled core: $core" >&2; exit 1; }
+  cp "$APP/jniLibs/arm64-v8a/$core" "$BUILD/apk/lib/arm64-v8a/"
+done
 "$BT/aapt" package -f -M "${AMRETRO_ANDROID_MANIFEST:-$APP/AndroidManifest.xml}" -S "$APP/res" -A "$APP/assets" -I "$PLATFORM" -F "$BUILD/unsigned.apk"
 find "${AMRETRO_ANDROID_SRC_DIR:-$APP/src}" -name '*.java' -print > "$BUILD/java-sources.txt"
 javac -source 8 -target 8 -classpath "$PLATFORM" -encoding UTF-8 -d "$BUILD/classes" @"$BUILD/java-sources.txt"

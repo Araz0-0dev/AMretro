@@ -10,6 +10,10 @@ void am_core_frame(uint16_t buttons);
 size_t am_core_take_audio(int16_t *buffer, size_t max_samples);
 double am_core_sample_rate(void);
 double am_core_fps(void);
+/* Call state/reset operations on the same thread as am_core_frame. */
+int am_core_save_state(const char *path);
+int am_core_load_state(const char *path);
+int am_core_reset(void);
 void am_core_close(void);
 const char *am_core_error(void);
 #endif

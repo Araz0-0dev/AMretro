@@ -11,7 +11,9 @@ pub struct ControlProfile { pub keyboard:BTreeMap<String,String>, pub gamepad:BT
 pub struct ProfileView { pub profile:ControlProfile, pub customized:bool, pub inherited:bool }
 
 pub fn default_profile()->ControlProfile{
-    let keys=["z","a","rshift","enter","up","down","left","right","x","s","q","w","c","v","num1","num2"];
+    // Shared semantic directions across consoles: W/A/S/D. The same four
+    // keys also feed the left analog axes in the generated RetroArch config.
+    let keys=["j","u","rshift","enter","w","s","a","d","k","i","q","e","c","v","num1","num2"];
     let mut keyboard=BTreeMap::new();let mut gamepad=BTreeMap::new();
     for (i,button) in BUTTONS.iter().enumerate(){keyboard.insert((*button).into(),keys[i].into());gamepad.insert((*button).into(),(*button).into());}
     ControlProfile{keyboard,gamepad}
@@ -50,8 +52,10 @@ pub fn save(db_path:&Path,game_id:Option<&str>,profile:&ControlProfile)->Result<
     validate(profile)?;let key=scope(game_id)?;db::save_control_profile(db_path,&key,&serde_json::to_string(profile).map_err(|e|e.to_string())?)
 }
 pub fn reset(db_path:&Path,game_id:Option<&str>)->Result<(),String>{db::delete_control_profile(db_path,&scope(game_id)?)}
-pub fn effective(db_path:&Path,game_id:&str)->Result<Option<ControlProfile>,String>{
-    let key=scope(Some(game_id))?;if let Some(p)=read(db_path,&key)?{return Ok(Some(p))}read(db_path,"global")
+pub fn effective(db_path:&Path,game_id:&str)->Result<ControlProfile,String>{
+    let key=scope(Some(game_id))?;
+    if let Some(p)=read(db_path,&key)? {return Ok(p)}
+    Ok(read(db_path,"global")?.unwrap_or_else(default_profile))
 }
 
 #[repr(C)]
@@ -76,6 +80,22 @@ fn safe_stem(path:&Path)->Result<String,String>{
     if s.is_empty()||s=="."||s==".."||s.contains(['/', '\\', ':'])||s.chars().any(char::is_control)||!matches!(Path::new(s).components().next(),Some(Component::Normal(_))){return Err("نام فایل بازی برای ذخیره دکمه‌ها مناسب نیست.".into())}
     Ok(s.to_string())
 }
+/// Render the RetroPad mapping and keyboard binds from the same profile.
+fn mapping_lines(p:&ControlProfile)->(String,String){
+    let mut remap=String::new();let mut keys=String::new();
+    for (target_id,target) in BUTTONS.iter().enumerate(){
+        let source=&p.gamepad[*target];let key=&p.keyboard[*target];
+        remap.push_str(&format!("input_player1_btn_{source} = \"{target_id}\"\n"));
+        keys.push_str(&format!("input_player1_{source} = \"{key}\"\n"));
+    }
+    // Also route the semantic movement keys to the left analog stick. Cores
+    // that use a D-pad ignore these; N64/PSP-style cores may read the stick.
+    // This is digital keyboard input, not a claim of full analog support.
+    for (axis,direction) in [("l_y_minus","up"),("l_y_plus","down"),("l_x_minus","left"),("l_x_plus","right")] {
+        keys.push_str(&format!("input_player1_{axis} = \"{}\"\n",p.keyboard[direction]));
+    }
+    (remap,keys)
+}
 /// Produce a game-private remap file plus the config fragment passed to
 /// RetroArch. The reverse map is important: .rmp maps *source* RetroPad button
 /// to the *target* game button. Keyboard binds are attached to those sources too.
@@ -84,12 +104,7 @@ pub fn generate(data:&Path,game_id:&str,game_path:&Path,core:&Path,p:&ControlPro
     let name=core_library_name(core)?;let stem=safe_stem(game_path)?;
     let dir=data.join("input-remaps").join(game_id);let sub=dir.join(name);
     fs::create_dir_all(&sub).map_err(|e|e.to_string())?;
-    let mut remap=String::new();let mut keys=String::new();
-    for (target_id,target) in BUTTONS.iter().enumerate(){
-        let source=&p.gamepad[*target];let key=&p.keyboard[*target];
-        remap.push_str(&format!("input_player1_btn_{source} = \"{target_id}\"\n"));
-        keys.push_str(&format!("input_player1_{source} = \"{key}\"\n"));
-    }
+    let (remap,keys)=mapping_lines(p);
     fs::write(sub.join(format!("{stem}.rmp")),remap).map_err(|e|e.to_string())?;
     Ok(format!("input_remapping_directory = \"{}\"\ninput_remap_binds_enable = \"true\"\ninput_remap_sort_by_controller_enable = \"false\"\nconfig_save_on_exit = \"false\"\n{keys}",quote(&dir.to_string_lossy())))
 }
@@ -100,8 +115,16 @@ pub fn generate(data:&Path,game_id:&str,game_path:&Path,core:&Path,p:&ControlPro
         let t=tempfile::tempdir().unwrap();let path=t.path().join("db");db::initialize(&path).unwrap();
         assert!(!view(&path,None).unwrap().customized);let mut global=default_profile();global.keyboard.insert("a".into(),"p".into());save(&path,None,&global).unwrap();
         let game=view(&path,Some("game-1")).unwrap();assert!(game.inherited);assert_eq!(game.profile.keyboard["a"],"p");
-        let mut profile=game.profile;profile.keyboard.insert("a".into(),"q".into());save(&path,Some("game-1"),&profile).unwrap();assert_eq!(effective(&path,"game-1").unwrap().unwrap().keyboard["a"],"q");
-        reset(&path,Some("game-1")).unwrap();assert_eq!(effective(&path,"game-1").unwrap().unwrap().keyboard["a"],"p");reset(&path,None).unwrap();assert!(effective(&path,"game-1").unwrap().is_none());
+        let mut profile=game.profile;profile.keyboard.insert("a".into(),"q".into());save(&path,Some("game-1"),&profile).unwrap();assert_eq!(effective(&path,"game-1").unwrap().keyboard["a"],"q");
+        reset(&path,Some("game-1")).unwrap();assert_eq!(effective(&path,"game-1").unwrap().keyboard["a"],"p");reset(&path,None).unwrap();assert_eq!(effective(&path,"game-1").unwrap(),default_profile());
+    }
+    #[test]fn wasd_and_analog_use_the_same_customizable_directions(){
+        let mut p=default_profile();let (_,keys)=mapping_lines(&p);
+        for (key,value) in [("up","w"),("down","s"),("left","a"),("right","d"),("l_y_minus","w"),("l_y_plus","s"),("l_x_minus","a"),("l_x_plus","d")] {
+            assert!(keys.contains(&format!("input_player1_{key} = \"{value}\"\n")));
+        }
+        p.keyboard.insert("up".into(),"f".into());let (_,keys)=mapping_lines(&p);
+        assert!(keys.contains("input_player1_up = \"f\"\n"));assert!(keys.contains("input_player1_l_y_minus = \"f\"\n"));
     }
     #[test]fn rejects_unsafe_and_duplicate_bindings(){
         let mut p=default_profile();p.keyboard.insert("a".into(),"x\"\nmalicious = \"true".into());assert!(validate(&p).is_err());
