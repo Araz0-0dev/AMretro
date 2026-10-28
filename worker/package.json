@@ -1,0 +1,26 @@
+{
+  "name": "retro-hub-worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:admin": "node scripts/inline-admin.mjs",
+    "typecheck": "npm run build:admin && tsc --noEmit",
+    "dev": "npm run build:admin && wrangler dev --local --ip 0.0.0.0 --config wrangler.local.jsonc",
+    "deploy": "npm run build:admin && wrangler deploy --config wrangler.jsonc",
+    "test": "npm run build:admin && tsx --test tests/*.test.ts"
+  },
+  "dependencies": {
+    "hono": "^4.13.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261023.1",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "wrangler": "^4.154.0"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

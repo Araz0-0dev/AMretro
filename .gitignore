@@ -1,0 +1,24 @@
+node_modules/
+.wrangler/
+target/
+dist/
+*.log
+.env
+.env.*
+.dev.vars
+.dev.vars.*
+!.env.example
+
+# Release artifacts are distributed through GitHub Releases, not git history.
+/releases/
+/deployment.json
+/previous-account-deployment.json
+/panel-*-internal.png
+!.dev.vars.example
+/android/.gradle/
+/android/local.properties
+
+# Generated local caches and Tauri schema output
+__pycache__/
+*.pyc
+/desktop/src-tauri/gen/

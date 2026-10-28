@@ -1,0 +1,27 @@
+{
+  "name": "retro-hub-68aa04",
+  "account_id": "b658ba82e122a6949b84ae97135eac97",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-27",
+  "workers_dev": true,
+  "vars": {
+    "ADMIN_USER": "admin",
+    "SUPABASE_URL": "https://ysdbcsyhinpxhejrsizj.supabase.co",
+    "SUPABASE_PUBLISHABLE_KEY": "sb_publishable_eR8hReVKF4JxfdEPW4xwSA_umaqbllc"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "retro-hub-db-68aa04",
+      "database_id": "9517794c-d37f-4897-9eda-7ac2a3221d04"
+    },
+    {
+      "binding": "MEDIA_DB",
+      "database_name": "retro-hub-images-68aa04",
+      "database_id": "1b57c3d3-a88a-44ad-81ca-8d5f3704dc34"
+    }
+  ],
+  "observability": {
+    "enabled": true
+  }
+}

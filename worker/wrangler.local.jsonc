@@ -1,0 +1,23 @@
+{
+  "name": "retro-hub-local",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-27",
+  "workers_dev": false,
+  "vars": {
+    "ADMIN_USER": "admin",
+    "ADMIN_PASSWORD": "local-preview-only",
+    "LOCAL_PREVIEW": "true"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "local-retro-hub",
+      "database_id": "3efc043a-b9c0-417c-9e41-7e81f081f9bc"
+    },
+    {
+      "binding": "MEDIA_DB",
+      "database_name": "local-retro-images",
+      "database_id": "f7026edc-3351-48b7-a7c4-b124511b175f"
+    }
+  ]
+}

@@ -1,0 +1,44 @@
+[package]
+name = "retro-hub-desktop"
+version = "0.3.0"
+description = "AMretro desktop launcher"
+edition = "2021"
+rust-version = "1.88"
+
+[lib]
+name = "retro_hub"
+crate-type = ["rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "fs", "sync"] }
+rusqlite = { version = "0.41", features = ["bundled"] }
+bytehaul = "0.2.7"
+libarchive_oxide = { version = "0.2.0", features = ["sevenz"] }
+cap-std = "4.0.2"
+gilrs = "0.11.2"
+dirs = "6"
+walkdir = "2"
+sha2 = "0.10"
+libloading = "0.8"
+uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+tempfile = "3"
+zip = { version = "6", default-features = false, features = ["deflate"] }
+
+[profile.dev]
+debug = 0
+incremental = false
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true
