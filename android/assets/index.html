@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' https: data:; font-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'">
+<title>AMretro</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<header class="topbar"><div class="brand"><span class="brand-icon">A<span>✦</span></span><div><b>AMretro</b><small>دنیای بازی‌های کلاسیک</small></div></div><span class="beta">ANDROID BETA</span></header>
+<main id="screen" aria-live="polite"></main>
+<nav class="bottom" aria-label="بخش‌های برنامه">
+  <button data-tab="home" class="active"><span>⌂</span><small>خانه</small></button>
+  <button data-tab="store"><span>▦</span><small>فروشگاه</small></button>
+  <button data-tab="library"><span>▤</span><small>کتابخانه</small></button>
+  <button data-tab="settings"><span>⚙</span><small>تنظیمات</small></button>
+</nav>
+<div id="modal" class="modal hidden" role="dialog" aria-modal="true"><div class="sheet"><div class="handle"></div><div id="modalContent"></div></div></div>
+<div id="toast" class="toast hidden" role="status"></div>
+<script src="app.js"></script>
+</body>
+</html>

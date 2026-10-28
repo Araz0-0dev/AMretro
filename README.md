@@ -6,10 +6,15 @@
 
 - [ستاپ ویندوز ۱۰ و ۱۱، ۶۴ بیتی](https://github.com/Araz0-0dev/AMretro/releases/download/v0.3.0/AMretro-Setup-0.3.0-x64.exe)
 - [بستهٔ نصبی اوبونتو/دبیان ۶۴ بیتی](https://github.com/Araz0-0dev/AMretro/releases/download/v0.3.0/AMretro_0.3.0_amd64.deb)
+- [اندروید بتا 0.1.0؛ APK برای ARM64](https://github.com/Araz0-0dev/AMretro/releases/download/android-v0.1.0-beta/AMretro-Android-0.1.0-beta-arm64.apk) — اندروید ۷ یا جدیدتر؛ [راهنما و محدودیت‌ها](android/README.md)
 - [پیش‌نمایش رابط](https://github.com/Araz0-0dev/AMretro/releases/download/v0.3.0/AMretro-Preview.png)
 - [پیش‌نمایش تنظیم دکمه‌ها با دادهٔ آزمایشی](https://github.com/Araz0-0dev/AMretro/releases/download/v0.3.0/AMretro-Controls.png)
 - [سورس پروژه](https://github.com/Araz0-0dev/AMretro/releases/download/v0.3.0/AMretro-Source.zip)
 - [فهرست SHA-256 فایل‌ها](https://github.com/Araz0-0dev/AMretro/releases/download/v0.3.0/AMretro-SHA256SUMS.txt)
+
+### اندروید بتا
+
+APK را روی دستگاه **ARM64 با اندروید ۷ یا جدیدتر** نصب کن. اجرای داخلی و دستهٔ لمسی برای GB، GBC و GBA است؛ سایر کنسول‌ها به RetroArch و هستهٔ جداگانه نیاز دارند. تروفی‌های محلی با دستاوردهای واقعی RetroAchievements متفاوت‌اند؛ برنامهٔ داخلی فقط پیشرفت رسمی را نمایش می‌دهد و آن را باز نمی‌کند. راهنمای دقیق، وضعیت آزمون و محدودیت‌ها را در [راهنمای اندروید](android/README.md) بخوان.
 
 ### ویندوز
 

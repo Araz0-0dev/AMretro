@@ -1,0 +1,16 @@
+package com.amretro.mobile;
+
+import android.view.Surface;
+
+final class NativeEmulator {
+    static { System.loadLibrary("amretro"); }
+    static native void surface(Surface surface);
+    static native boolean open(String core, String rom, String systemDir, String saveFile);
+    static native String error();
+    static native void frame(int buttons);
+    static native short[] audio();
+    static native double rate();
+    static native double fps();
+    static native void close();
+    private NativeEmulator() {}
+}

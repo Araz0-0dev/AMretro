@@ -16,7 +16,18 @@ dist/
 /panel-*-internal.png
 !.dev.vars.example
 /android/.gradle/
+/android/.build/
+/android/.build-local/
 /android/local.properties
+
+# Android/desktop signing material is private and must never enter releases or Git.
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.idsig
+**/signing-password*
+**/keystore-password*
 
 # Generated local caches and Tauri schema output
 __pycache__/

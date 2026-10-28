@@ -1,0 +1,23 @@
+const {chromium}=require('playwright');
+const path=require('path');
+const fs=require('fs');
+const screenshots=process.env.AMRETRO_TEST_SCREENSHOTS;
+if(screenshots) fs.mkdirSync(screenshots,{recursive:true});
+(async()=>{
+  const browser=await chromium.launch({headless:true,args:['--no-sandbox']});
+  const page=await browser.newPage({viewport:{width:390,height:844},deviceScaleFactor:1});
+  const errors=[];page.on('pageerror',e=>errors.push(e.message));
+  await page.addInitScript(()=>{window.Android={library(){},syncCatalog(){},importGame(){},install(){},play(){},retroarch(){},removeGame(){},clearRa(){},openRaHelp(){},openRetroSite(){},trophy(id){window.fromNative('trophy',{id,title:'بازی آزمایشی',console_id:'gba',play_ms:1900000,sessions:2,ra_id:1,ra_user:'Tester',ra_has_key:true});},fetchRa(){}};});
+  await page.goto('file://'+path.resolve('android/assets/index.html'));await page.getByText('هر بازی، یک خاطره').waitFor();
+  if(screenshots) await page.screenshot({path:path.join(screenshots,'home.png'),fullPage:true});
+  await page.locator('[data-tab="library"]').click();if(!(await page.getByText('کتابخانه خالی است').count()))throw new Error('Empty library not displayed');
+  await page.evaluate(()=>window.fromNative('library',[{id:'fixture',title:'بازی آزمایشی',console_id:'gba',core:'mgba',play_ms:1900000,sessions:2}]));
+  await page.getByText('تروفی‌ها',{exact:true}).click();if(!(await page.getByText('طلایی  ·  آزاد شده').count()))throw new Error('Local trophies incorrect');
+  await page.evaluate(()=>window.fromNative('ra',{id:'fixture',title:'Official Game',console:'Game Boy Advance',achievements:[{title:'<img src=x onerror=alert(1)>',points:25,description:'Example',earned:true}]}));
+  if(await page.locator('#ra-results img').count())throw new Error('Untrusted title became HTML');
+  if(!(await page.getByText('پلاتینیوم نمایشی AMretro',{exact:false}).count()))throw new Error('Official completion display missing');
+  const metrics=await page.evaluate(()=>({width:document.documentElement.scrollWidth,viewport:innerWidth}));if(metrics.width>metrics.viewport)throw new Error('Horizontal overflow '+JSON.stringify(metrics));
+  if(screenshots) await page.screenshot({path:path.join(screenshots,'trophies.png'),fullPage:true});
+  if(errors.length)throw new Error('JS errors: '+errors.join('; '));
+  console.log('ANDROID_UI_MOCK_OK home, library, trophies, RA completion, XSS text, mobile width');await browser.close();
+})().catch(e=>{console.error(e);process.exit(1);});
