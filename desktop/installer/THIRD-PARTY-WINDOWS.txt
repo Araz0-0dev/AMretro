@@ -1,7 +1,8 @@
 AMretro Windows runtime setup – third-party components
 
-The installer automatically downloads original, unmodified components from
-Libretro and the projects below. It verifies SHA-256 before extracting them.
+The setup contains (offline build) or downloads (online build) original,
+unmodified components from Libretro and the projects below. SHA-256 is
+verified before any of them is extracted.
 The applications and cores have their own licenses; this does not declare a
 license for the AMretro source. Some cores have non-commercial restrictions.
 Read the relevant license before redistributing or using them commercially.

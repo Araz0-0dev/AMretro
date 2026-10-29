@@ -2,6 +2,14 @@
 ; Input files are supplied with /DAPP_BINARY=..., /DWEBVIEW_LOADER=...,
 ; /DWEBVIEW_BOOTSTRAPPER=..., /DFONT_LICENSE=..., /DAPP_ICON=..., /DSIDEBAR=..., /DOUTPUT=...
 Unicode true
+
+; Optional offline payload: when PAYLOAD_DIR is given, the four pinned official
+; archives are embedded and the runtime installer uses them without downloading.
+!ifdef PAYLOAD_DIR
+  !define CACHE_ARG ' -CacheDir "$PLUGINSDIR"'
+!else
+  !define CACHE_ARG ''
+!endif
 RequestExecutionLevel user
 !include "MUI2.nsh"
 !include "LogicLib.nsh"
@@ -137,13 +145,22 @@ Function InstallRuntime
   File /oname=windows-core-list.txt "${CORE_LIST}"
   File /oname=windows-support-assets.json "${ASSET_MANIFEST}"
   File /oname=retroarch-launcher.exe "${RETROARCH_WRAPPER}"
+!ifdef PAYLOAD_DIR
+  ; Already-compressed archives: storing them avoids a very slow LZMA pass.
+  SetCompress off
+  File /oname=RetroArch-1.22.2-win64.7z "${PAYLOAD_DIR}\RetroArch-1.22.2-win64.7z"
+  File /oname=RetroArch-1.22.2-win64-cores.7z "${PAYLOAD_DIR}\RetroArch-1.22.2-win64-cores.7z"
+  File /oname=ppsspp-src-c1581e6.zip "${PAYLOAD_DIR}\ppsspp-src-c1581e6.zip"
+  File /oname=dolphin-src-227c4e0.zip "${PAYLOAD_DIR}\dolphin-src-227c4e0.zip"
+  SetCompress auto
+!endif
   ; 64-bit PowerShell is used when available (Sysnative from this 32-bit installer).
   StrCpy $2 "$WINDIR\Sysnative\WindowsPowerShell\v1.0\powershell.exe"
   IfFileExists "$2" +2 0
     StrCpy $2 "$SYSDIR\WindowsPowerShell\v1.0\powershell.exe"
   retry_runtime_setup:
   DetailPrint "در حال آماده‌سازی RetroArch و هسته‌ها؛ ممکن است چند دقیقه طول بکشد..."
-  nsExec::ExecToLog '"$2" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\install-windows-runtime.ps1" -InstallDir "$INSTDIR" -Extractor "$PLUGINSDIR\7za.exe" -CoreList "$PLUGINSDIR\windows-core-list.txt" -AssetManifest "$PLUGINSDIR\windows-support-assets.json" -Launcher "$PLUGINSDIR\retroarch-launcher.exe"'
+  nsExec::ExecToLog '"$2" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\install-windows-runtime.ps1" -InstallDir "$INSTDIR" -Extractor "$PLUGINSDIR\7za.exe" -CoreList "$PLUGINSDIR\windows-core-list.txt" -AssetManifest "$PLUGINSDIR\windows-support-assets.json" -Launcher "$PLUGINSDIR\retroarch-launcher.exe"${CACHE_ARG}'
   Pop $0
   ; Success requires the exit code AND the files it promises. A missing file
   ; is a failure even if the helper reported 0.

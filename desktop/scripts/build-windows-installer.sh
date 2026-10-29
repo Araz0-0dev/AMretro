@@ -21,6 +21,17 @@ test -f "$exe" && test -f "$loader"
 mkdir -p "$here/installer/build"
 x86_64-w64-mingw32-gcc -municode -mwindows -Os -s -Wall -Wextra -Werror \
   -o "$launcher" "$here/installer/retroarch-wrapper.c"
+# Optional offline build: PAYLOAD_DIR holds the four pinned official archives,
+# which are then embedded so the setup does not need the internet.
+payload_args=()
+if [ -n "${PAYLOAD_DIR:-}" ]; then
+  payload_sums="86b871e11b9b4772ac644b40a38f2c8e9449da1f355eae7da08aa061148547b0  RetroArch-1.22.2-win64-cores.7z
+b2139b1d0f9d4526dc6b5ce23cbb3efdc766096fa6f2c3df016818b486ac6372  RetroArch-1.22.2-win64.7z
+4dfa0b1f759161381aebaa1f15f80cf94acab8bbe4a9c47728a55b4aaef141f9  ppsspp-src-c1581e6.zip
+3e281c2bbd902ba3c527f35dea1ede809394b471be1658b102b7c3b41c0d44d2  dolphin-src-227c4e0.zip"
+  (cd "$PAYLOAD_DIR" && printf '%s\n' "$payload_sums" | sha256sum --check --status) || { echo 'Offline payload checksum mismatch' >&2; exit 1; }
+  payload_args=("-DPAYLOAD_DIR=$PAYLOAD_DIR")
+fi
 mkdir -p "$(dirname "$out")"
 cd "$here/installer"
 "${MAKENSIS:-makensis}" -V2 \
@@ -37,5 +48,5 @@ cd "$here/installer"
   "-DASSET_MANIFEST=$here/installer/windows-support-assets.json" \
   "-DTHIRD_PARTY_NOTICES=$here/installer/THIRD-PARTY-WINDOWS.txt" \
   "-DSEVENZIP_LICENSE=$seven_license" \
-  "-DOUTPUT=$out" windows-amretro.nsi
+  "-DOUTPUT=$out" "${payload_args[@]}" windows-amretro.nsi
 printf 'Created %s\n' "$out"
