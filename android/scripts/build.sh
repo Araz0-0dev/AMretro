@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Reproducible Android APK build. Defaults to all four currently supported ABIs.
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 APP="$ROOT/android"
@@ -6,21 +7,27 @@ APP="$ROOT/android"
 : "${ANDROID_NDK_ROOT:?Set ANDROID_NDK_ROOT to Android NDK r27c}"
 : "${AMRETRO_KEYSTORE:?Set AMRETRO_KEYSTORE to your private Android signing keystore}"
 : "${AMRETRO_STOREPASS_FILE:?Set AMRETRO_STOREPASS_FILE to a private file containing the keystore password}"
-BT=${ANDROID_BUILD_TOOLS_DIR:-"$ANDROID_SDK_ROOT/build-tools/35.0.0"}
+BT=${ANDROID_BUILD_TOOLS_DIR:-"$ANDROID_SDK_ROOT/build-tools/35.0.1"}
 PLATFORM=${ANDROID_PLATFORM_JAR:-"$ANDROID_SDK_ROOT/platforms/android-35/android.jar"}
-TOOLCHAIN="$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64"
 BUILD=${AMRETRO_ANDROID_BUILD_DIR:-"$APP/.build-local"}
-OUT=${AMRETRO_ANDROID_APK:-"$ROOT/releases/AMretro-Android-0.2.1-beta-arm64.apk"}
-[ -f "$PLATFORM" ] && [ -x "$BT/aapt" ] && [ -x "$TOOLCHAIN/bin/aarch64-linux-android24-clang" ] || { echo 'Android SDK / NDK paths are invalid.' >&2; exit 1; }
+OUT=${AMRETRO_ANDROID_APK:-"$ROOT/releases/AMretro-Android-universal-candidate.apk"}
+CORE_DIR=${AMRETRO_ANDROID_CORE_DIR:-"$APP/jniLibs"}
+ABIS=${AMRETRO_ANDROID_ABIS:-"arm64-v8a armeabi-v7a x86 x86_64"}
+[ -f "$PLATFORM" ] && [ -x "$BT/aapt" ] && [ -x "$BT/zipalign" ] && [ -x "$BT/apksigner" ] || { echo 'Android SDK paths are invalid.' >&2; exit 1; }
 mkdir -p "$BUILD" "$(dirname "$OUT")"
 rm -rf "$BUILD/classes" "$BUILD/dex" "$BUILD/apk" "$BUILD/unsigned.apk" "$BUILD/aligned.apk"
-mkdir -p "$BUILD/classes" "$BUILD/dex" "$BUILD/apk/lib/arm64-v8a"
-"$TOOLCHAIN/bin/aarch64-linux-android24-clang" -std=c11 -D_POSIX_C_SOURCE=200809L -O2 -fPIC -shared -Wall -Wextra -Werror \
-  -Wl,-z,max-page-size=16384 -o "$BUILD/apk/lib/arm64-v8a/libamretro.so" \
-  "$APP/native/core_host.c" "$APP/native/android_jni.c" -landroid -llog -ldl
-for core in libmgba_libretro.so libnes_libretro.so libares_md_libretro.so; do
-  [ -f "$APP/jniLibs/arm64-v8a/$core" ] || { echo "Missing bundled core: $core" >&2; exit 1; }
-  cp "$APP/jniLibs/arm64-v8a/$core" "$BUILD/apk/lib/arm64-v8a/"
+mkdir -p "$BUILD/classes" "$BUILD/dex" "$BUILD/apk/lib"
+for abi in $ABIS; do
+  export ANDROID_ABI="$abi"
+  source "$APP/scripts/abi-env.sh"
+  dest="$BUILD/apk/lib/$abi"; mkdir -p "$dest"
+  "$ANDROID_CC" -std=c11 -D_POSIX_C_SOURCE=200809L -O2 -fPIC -shared -Wall -Wextra -Werror \
+    -Wl,-z,max-page-size=16384 -o "$dest/libamretro.so" \
+    "$APP/native/core_host.c" "$APP/native/android_jni.c" -landroid -llog -ldl
+  for core in libmgba_libretro.so libnes_libretro.so libares_md_libretro.so; do
+    [ -f "$CORE_DIR/$abi/$core" ] || { echo "Missing $abi core: $core" >&2; exit 1; }
+    cp "$CORE_DIR/$abi/$core" "$dest/"
+  done
 done
 "$BT/aapt" package -f -M "${AMRETRO_ANDROID_MANIFEST:-$APP/AndroidManifest.xml}" -S "$APP/res" -A "$APP/assets" -I "$PLATFORM" -F "$BUILD/unsigned.apk"
 find "${AMRETRO_ANDROID_SRC_DIR:-$APP/src}" -name '*.java' -print > "$BUILD/java-sources.txt"
@@ -33,4 +40,4 @@ find "$BUILD/classes" -name '*.class' -print > "$BUILD/class-files.txt"
 "$BT/apksigner" sign --ks "$AMRETRO_KEYSTORE" --ks-key-alias amretro --ks-pass "file:$AMRETRO_STOREPASS_FILE" --out "$OUT" "$BUILD/aligned.apk"
 "$BT/apksigner" verify --verbose "$OUT"
 "$BT/zipalign" -c -P 16 4 "$OUT"
-echo "APK: $OUT"
+echo "APK: $OUT (ABIs: $ABIS)"

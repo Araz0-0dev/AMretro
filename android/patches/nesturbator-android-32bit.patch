@@ -1,0 +1,14 @@
+--- a/src/state.c
++++ b/src/state.c
+@@ -65,8 +65,10 @@
+ _Static_assert(offsetof(struct nesturbator__synth, pcm) ==
+                    offsetof(struct nesturbator__synth, lp_output_q30) + 8u,
+                "synth fields changed: update synth_io");
++/* Pointer alignment is 4 on 32-bit Android, 8 on 64-bit Android. */
+ _Static_assert(offsetof(struct nesturbator__ppu, video_output) ==
+-                   ((offsetof(struct nesturbator__ppu, at_latch_hi) + 1u + 7u) & ~(size_t)7u),
++                   ((offsetof(struct nesturbator__ppu, at_latch_hi) + 1u + _Alignof(uint16_t*) - 1u) &
++                    ~(size_t)(_Alignof(uint16_t*) - 1u)),
+                "ppu fields changed: update ppu_io");
+ _Static_assert(offsetof(struct nesturbator__ppu, reset_flag) -
+                        offsetof(struct nesturbator__ppu, ppu_ticks) ==

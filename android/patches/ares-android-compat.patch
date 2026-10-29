@@ -1,0 +1,166 @@
+--- a/ares/ares/memory/writable.hpp
++++ b/ares/ares/memory/writable.hpp
+@@ -33,14 +33,14 @@
+ 
+   auto load(VFS::File fp) -> void {
+     if(!self.size) allocate(fp->size());
+-    fp->read({(u8*)self.data, min(fp->size(), self.size * sizeof(T))});
++    fp->read({(u8*)self.data, static_cast<size_t>(min(fp->size(), self.size * sizeof(T)))});
+     for(u32 address = self.size; address <= self.mask; address++) {
+       self.data[address] = self.data[mirror(address, self.size)];
+     }
+   }
+ 
+   auto save(VFS::File fp) -> void {
+-    fp->write({(const u8*)self.data, min(fp->size(), self.size * sizeof(T))});
++    fp->write({(const u8*)self.data, static_cast<size_t>(min(fp->size(), self.size * sizeof(T)))});
+   }
+ 
+   explicit operator bool() const { return (bool)self.data; }
+--- a/ares/ares/memory/readable.hpp
++++ b/ares/ares/memory/readable.hpp
+@@ -33,14 +33,14 @@
+ 
+   auto load(VFS::File fp) -> void {
+     if(!self.size) allocate(fp->size());
+-    fp->read({(u8*)self.data, min(fp->size(), self.size * sizeof(T))});
++    fp->read({(u8*)self.data, static_cast<size_t>(min(fp->size(), self.size * sizeof(T)))});
+     for(u32 address = self.size; address <= self.mask; address++) {
+       self.data[address] = self.data[mirror(address, self.size)];
+     }
+   }
+ 
+   auto save(VFS::File fp) -> void {
+-    fp->write({self.data, min(fp->size(), self.size * sizeof(T))});
++    fp->write({self.data, static_cast<size_t>(min(fp->size(), self.size * sizeof(T)))});
+   }
+ 
+   explicit operator bool() const { return (bool)self.data; }
+--- a/ares/component/CMakeLists.txt
++++ b/ares/component/CMakeLists.txt
+@@ -220,6 +220,13 @@
+     processor/m68hc05/memory.cpp
+     processor/m68hc05/serialization.cpp
+ )
++
++# Limit optimizer memory for the very large template-heavy 68000 unit on Android.
++# This may reduce performance; validate it on target devices.
++if(ANDROID AND AMRETRO_LOW_MEMORY_68000)
++  set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/processor/m68000/m68000.cpp
++    TARGET_DIRECTORY ares PROPERTIES COMPILE_OPTIONS "-O0")
++endif()
+ 
+ component_sources(
+   COMPONENT
+--- a/mia/medium/famicom.cpp
++++ b/mia/medium/famicom.cpp
+@@ -39,25 +39,29 @@
+   pak->append("manifest.bml", manifest);
+ 
+   std::span<const u8> view{rom};
++  // Manifest sizes are u64, but a span is indexed with size_t on Android.
++  // Check against the actual ROM before converting or creating any subspan.
++  auto appendView = [&](const char* name, u64 length) -> bool {
++    if(length > view.size()) return false;
++    auto count = static_cast<size_t>(length);
++    pak->append(name, view.first(count));
++    view = view.subspan(count);
++    return true;
++  };
+   if(auto node = document["game/board/memory(type=ROM,content=iNES)"]) {
+-    pak->append("ines.rom", {view.data(), node["size"].natural()});
+-    view = view.subspan(node["size"].natural());
++    if(!appendView("ines.rom", node["size"].natural())) return couldNotParseManifest;
+   }
+   if(auto node = document["game/board/memory(type=Flash,content=Program)"]) {
+-    pak->append("program.flash", {view.data(), node["size"].natural()});
++    if(!appendView("program.flash", node["size"].natural())) return couldNotParseManifest;
+     Pak::load("program.flash", ".flash");
+-    view = view.subspan(node["size"].natural());
+   } else if(auto node = document["game/board/memory(type=ROM,content=Program)"]) {
+-    pak->append("program.rom", {view.data(), node["size"].natural()});
+-    view = view.subspan(node["size"].natural());
++    if(!appendView("program.rom", node["size"].natural())) return couldNotParseManifest;
+   }
+   if(auto node = document["game/board/memory(type=ROM,content=Option)"]) {
+-    pak->append("option.rom", {view.data(), node["size"].natural()});
+-    view = view.subspan(node["size"].natural());
++    if(!appendView("option.rom", node["size"].natural())) return couldNotParseManifest;
+   }
+   if(auto node = document["game/board/memory(type=ROM,content=Character)"]) {
+-    pak->append("character.rom", {view.data(), node["size"].natural()});
+-    view = view.subspan(node["size"].natural());
++    if(!appendView("character.rom", node["size"].natural())) return couldNotParseManifest;
+   }
+ 
+   if(auto node = document["game/board/memory(type=RAM,content=Save)"]) {
+--- a/mia/pak/pak.cpp
++++ b/mia/pak/pak.cpp
+@@ -116,9 +116,11 @@
+   if(!location) location = this->location;
+   if(auto save = pak->read(name)) {
+     auto saveFilePath = saveLocation(location, name, extension);
++    const auto length = save->size();
++    if(length > SIZE_MAX || (length && !save->data())) return false;
+     directory::create(Location::dir(saveFilePath));
+     if(auto fp = file::open(saveLocation(location, name, extension), file::mode::write)) {
+-      fp.write({save->data(), save->size()});
++      fp.write({save->data(), static_cast<size_t>(length)});
+       return true;
+     }
+   }
+--- a/libco/CMakeLists.txt
++++ b/libco/CMakeLists.txt
+@@ -1,5 +1,13 @@
+ add_library(libco STATIC libco.c)
+ 
++# arm.c embeds ARM-mode instructions as data. Calling them from a Thumb-2
++# co_switch can be optimized into a Thumb branch, corrupting the CPU state.
++# Compile this small library in ARM mode on Android ARMv7; the linker handles
++# calls to/from Thumb code and entrypoints.
++if(ANDROID AND ANDROID_ABI STREQUAL "armeabi-v7a")
++  target_compile_options(libco PRIVATE -marm)
++endif()
++
+ string(TOLOWER ${CMAKE_SYSTEM_PROCESSOR} LOWERCASE_CMAKE_SYSTEM_PROCESSOR)
+ 
+ if(LOWERCASE_CMAKE_SYSTEM_PROCESSOR MATCHES "(i[3-6]86|x86)")
+--- a/libco/arm.c
++++ b/libco/arm.c
+@@ -24,6 +24,13 @@
+ #endif
+ static const unsigned long co_swap_function[1024] = {
+   0xe8a16ff0,  /* stmia r1!, {r4-r11,sp,lr} */
++#if defined(__ANDROID__) && defined(__ARM_ARCH_7A__) && defined(__ARM_FP)
++  /* AAPCS requires d8-d15 to survive a call, including a coroutine switch.
++     GPRs consume the first 40 bytes of each handle; save VFP after them. */
++  0xeca18b10,  /* vstmia r1!, {d8-d15}       */
++  0xe2802028,  /* add r2, r0, #40            */
++  0xecb28b10,  /* vldmia r2!, {d8-d15}       */
++#endif
+   0xe8b0aff0,  /* ldmia r0!, {r4-r11,sp,pc} */
+   0xe12fff1e,  /* bx lr                     */
+ };
+@@ -52,6 +59,11 @@
+ 
+   if(handle = (unsigned long*)memory) {
+     unsigned int offset = (size & ~15);
++#if defined(__ANDROID__) && defined(__ARM_ARCH_7A__) && defined(__ARM_FP)
++    if(offset < 26 * sizeof(unsigned long) + 16) return (cothread_t)0;
++    /* New/restarted coroutines begin with a known VFP context. */
++    for(unsigned int index = 10; index < 26; index++) handle[index] = 0;
++#endif
+     unsigned long* p = (unsigned long*)((unsigned char*)handle + offset);
+     handle[8] = (unsigned long)p;
+     handle[9] = (unsigned long)entrypoint;
+@@ -63,7 +75,9 @@
+ cothread_t co_create(unsigned int size, void (*entrypoint)(void)) {
+   void* memory = malloc(size);
+   if(!memory) return (cothread_t)0;
+-  return co_derive(memory, size, entrypoint);
++  cothread_t handle = co_derive(memory, size, entrypoint);
++  if(!handle) free(memory);
++  return handle;
+ }
+ 
+ void co_delete(cothread_t handle) {
