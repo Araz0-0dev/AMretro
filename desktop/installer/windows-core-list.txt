@@ -2,6 +2,7 @@ RetroArch-Win64/cores/a5200_libretro.dll
 RetroArch-Win64/cores/atari800_libretro.dll
 RetroArch-Win64/cores/bluemsx_libretro.dll
 RetroArch-Win64/cores/cap32_libretro.dll
+RetroArch-Win64/cores/citra_libretro.dll
 RetroArch-Win64/cores/desmume_libretro.dll
 RetroArch-Win64/cores/dolphin_libretro.dll
 RetroArch-Win64/cores/dosbox_pure_libretro.dll
@@ -16,8 +17,8 @@ RetroArch-Win64/cores/genesis_plus_gx_libretro.dll
 RetroArch-Win64/cores/handy_libretro.dll
 RetroArch-Win64/cores/hatari_libretro.dll
 RetroArch-Win64/cores/mednafen_ngp_libretro.dll
-RetroArch-Win64/cores/mednafen_pce_libretro.dll
 RetroArch-Win64/cores/mednafen_pce_fast_libretro.dll
+RetroArch-Win64/cores/mednafen_pce_libretro.dll
 RetroArch-Win64/cores/mednafen_pcfx_libretro.dll
 RetroArch-Win64/cores/mednafen_saturn_libretro.dll
 RetroArch-Win64/cores/mednafen_supergrafx_libretro.dll

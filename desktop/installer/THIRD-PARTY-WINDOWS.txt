@@ -16,7 +16,7 @@ Core information and licenses: the installed AMretroRuntime/info/*.info files
 and https://github.com/libretro/libretro-super/tree/master/dist/info
 Libretro core source catalogue: https://github.com/libretro/libretro-super
 
-The installation downloads 43 matching core libraries. Availability of a core
+The installation downloads 44 matching core libraries (one per catalogued console core, including Citra for Nintendo 3DS). Availability of a core
 is not a claim that every game, feature, console, hardware configuration or
 firmware requirement is supported. The cores are independent upstream binaries.
 
