@@ -1,0 +1,125 @@
+name: Desktop candidate verification
+
+# Manual only: these jobs create short-lived test artifacts, not releases.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    name: Ubuntu 22.04 build and smoke test
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install desktop and test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev \
+            libayatana-appindicator3-dev librsvg2-dev libssl-dev libudev-dev \
+            patchelf build-essential xvfb xdotool
+      - name: Unit tests and release build
+        working-directory: desktop/src-tauri
+        run: |
+          cargo test --locked --lib
+          cargo build --locked --release --bin retro-hub-desktop
+      - name: Build and inspect Debian package
+        run: |
+          mkdir -p "$RUNNER_TEMP/amretro-artifacts"
+          bash desktop/scripts/build-linux-deb.sh \
+            "$GITHUB_WORKSPACE/desktop/src-tauri/target/release/retro-hub-desktop" \
+            "$RUNNER_TEMP/amretro-artifacts/AMretro_0.3.1_amd64-candidate.deb"
+          dpkg-deb --info "$RUNNER_TEMP/amretro-artifacts/AMretro_0.3.1_amd64-candidate.deb"
+          dpkg-deb -x "$RUNNER_TEMP/amretro-artifacts/AMretro_0.3.1_amd64-candidate.deb" "$RUNNER_TEMP/amretro-extracted"
+      - name: Launch real application under Xvfb
+        # This test reads the public production catalogue; it never writes to it.
+        run: |
+          xvfb-run -a env AMRETRO_BINARY="$RUNNER_TEMP/amretro-extracted/usr/bin/amretro" \
+            python3 desktop/tests/native-smoke.py
+      - name: Save test artifact (not a release)
+        uses: actions/upload-artifact@v4
+        with:
+          name: AMretro-Linux-candidate
+          path: ${{ runner.temp }}/amretro-artifacts/*.deb
+          if-no-files-found: error
+          retention-days: 7
+
+  windows:
+    name: Windows 2022 build, installer and native launch
+    runs-on: windows-2022
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Unit tests and native release build
+        working-directory: desktop/src-tauri
+        run: |
+          $ErrorActionPreference = 'Stop'
+          cargo test --locked --lib
+          if ($LASTEXITCODE -ne 0) { throw 'Rust tests failed' }
+          cargo build --locked --release --bin retro-hub-desktop
+          if ($LASTEXITCODE -ne 0) { throw 'Rust build failed' }
+      - name: Create candidate installer
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = $env:GITHUB_WORKSPACE
+          $bootstrap = Join-Path $root 'desktop/installer/vendor/MicrosoftEdgeWebview2Setup.exe'
+          $expected = '13f6d9cdc8c3e7186e4b180db7f48e199ee97d631480e8391fb3106f338fb21a'
+          if ((Get-FileHash -Algorithm SHA256 $bootstrap).Hash.ToLowerInvariant() -ne $expected) { throw 'WebView2 bootstrapper checksum mismatch' }
+          $binary = Join-Path $root 'desktop/src-tauri/target/release/retro-hub-desktop.exe'
+          $loader = Get-ChildItem (Join-Path $root 'desktop/src-tauri/target/release/build') -Filter WebView2Loader.dll -Recurse |
+            Where-Object { $_.FullName -match 'webview2-com-sys.*[\\/]out[\\/]x64[\\/]' } | Select-Object -First 1
+          if (-not $loader) { throw 'The x64 WebView2 loader from the Rust build was not found' }
+          $nsis = Join-Path ${env:ProgramFiles(x86)} 'NSIS/makensis.exe'
+          if (-not (Test-Path $nsis)) { throw 'NSIS is required on the Windows runner' }
+          $artifacts = Join-Path $env:RUNNER_TEMP 'amretro-artifacts'
+          New-Item -ItemType Directory -Force -Path $artifacts | Out-Null
+          $output = Join-Path $artifacts 'AMretro-Setup-0.3.1-x64-candidate.exe'
+          $arguments = @('/V2', "/DAPP_BINARY=$binary", "/DWEBVIEW_LOADER=$($loader.FullName)",
+            "/DWEBVIEW_BOOTSTRAPPER=$bootstrap", "/DFONT_LICENSE=$(Join-Path $root 'desktop/ui/assets/fonts/OFL-Vazirmatn.txt')",
+            "/DAPP_ICON=$(Join-Path $root 'desktop/src-tauri/icons/icon.ico')", "/DSIDEBAR=$(Join-Path $root 'desktop/installer/sidebar.bmp')",
+            "/DOUTPUT=$output", (Join-Path $root 'desktop/installer/windows-amretro.nsi'))
+          & $nsis @arguments
+          if ($LASTEXITCODE -ne 0 -or -not (Test-Path $output)) { throw 'NSIS packaging failed' }
+      - name: Install, launch and uninstall on Windows
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $setup = Join-Path $env:RUNNER_TEMP 'amretro-artifacts/AMretro-Setup-0.3.1-x64-candidate.exe'
+          $dest = Join-Path $env:RUNNER_TEMP 'AMretro-smoke'
+          $install = Start-Process -FilePath $setup -ArgumentList '/S', "/D=$dest" -Wait -PassThru
+          if ($install.ExitCode -ne 0) { throw "Installer returned $($install.ExitCode)" }
+          $exe = Join-Path $dest 'AMretro.exe'
+          if (-not (Test-Path $exe) -or -not (Test-Path (Join-Path $dest 'WebView2Loader.dll'))) { throw 'Installed files missing' }
+          $app = Start-Process -FilePath $exe -PassThru
+          try {
+            $found = $false
+            for ($i = 0; $i -lt 30; $i++) {
+              Start-Sleep -Seconds 1
+              $app.Refresh()
+              if ($app.HasExited) { throw "Application exited early with code $($app.ExitCode)" }
+              if ($app.MainWindowHandle -ne 0) { $found = $true; break }
+            }
+            if (-not $found) { throw 'No native application window appeared' }
+            Write-Host 'WINDOWS_NATIVE_WINDOW_OK'
+          } finally {
+            if (-not $app.HasExited) { Stop-Process -Id $app.Id -Force }
+          }
+          $uninstaller = Join-Path $dest 'Uninstall.exe'
+          if (-not (Test-Path $uninstaller)) { throw 'Uninstaller missing' }
+          $uninstall = Start-Process -FilePath $uninstaller -ArgumentList '/S', "_?=$dest" -Wait -PassThru
+          if ($uninstall.ExitCode -ne 0) { throw "Uninstaller returned $($uninstall.ExitCode)" }
+          if (Test-Path $exe) { throw 'Application executable remained after uninstall' }
+          Write-Host 'WINDOWS_INSTALL_LAUNCH_UNINSTALL_OK'
+      - name: Save unsigned test artifact (not a release)
+        uses: actions/upload-artifact@v4
+        with:
+          name: AMretro-Windows-unsigned-candidate
+          path: ${{ runner.temp }}/amretro-artifacts/*.exe
+          if-no-files-found: error
+          retention-days: 7

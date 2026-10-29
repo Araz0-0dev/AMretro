@@ -27,7 +27,8 @@ static uint16_t current_buttons;
 static int16_t audio_data[AUDIO_SAMPLES];
 static size_t audio_count;
 static double sample_rate = 32768, frame_rate = 60;
-static uint64_t content_signature;
+static uint64_t content_signature, legacy_content_signature;
+static bool has_legacy_content_signature;
 struct option { char *key, *value; };
 static struct option options[MAX_OPTIONS];
 static size_t option_count;
@@ -63,6 +64,23 @@ static bool fingerprint_file(uint64_t *value, const char *path) {
     while ((n = fread(b, 1, sizeof(b), f)) != 0) *value = fingerprint(*value, b, n);
     bool ok = !ferror(f); if (fclose(f) != 0) ok = false;
     return ok;
+}
+/* Narrow, one-way save-state migration for the tested ares MD optimization.
+ * The pairs are FNV-1a fingerprints of exact new and previously published
+ * binaries, NOT version labels.  A different build, game, or ABI therefore
+ * does not inherit compatibility.  These hashes are accidental-mismatch
+ * checks rather than security hashes, as are the existing state headers. */
+static bool legacy_core_fingerprint(uint64_t current, uint64_t *previous) {
+    static const struct { uint64_t current, previous; } pairs[] = {
+        {UINT64_C(0xbe554b88b6092e62), UINT64_C(0x273346c2c5446c94)}, /* arm64-v8a */
+        {UINT64_C(0x9396f69dea8d1409), UINT64_C(0xdc747d492184a229)}, /* armeabi-v7a */
+        {UINT64_C(0x547e9c10508fcb2d), UINT64_C(0x26b4e69017e53f95)}, /* x86 */
+        {UINT64_C(0x1442f817dd8cc47a), UINT64_C(0xd44d2c8a0039d395)}  /* x86_64 */
+    };
+    for (size_t i = 0; i < sizeof(pairs) / sizeof(pairs[0]); i++) {
+        if (pairs[i].current == current) { *previous = pairs[i].previous; return true; }
+    }
+    return false;
 }
 static void put_u64(unsigned char *p, uint64_t n) { for (unsigned i = 0; i < 8; i++) p[i] = (unsigned char)(n >> (i * 8)); }
 static uint64_t get_u64(const unsigned char *p) { uint64_t n = 0; for (unsigned i = 0; i < 8; i++) n |= (uint64_t)p[i] << (i * 8); return n; }
@@ -221,9 +239,16 @@ int am_core_open(const char *library, const char *rom, const char *system_dir, c
         fclose(file); game.data = rom_data; game.size = (size_t)size;
     }
     content_signature = UINT64_C(14695981039346656037);
+    has_legacy_content_signature = false; legacy_content_signature = 0;
     if (!fingerprint_file(&content_signature, library)) { set_error("Cannot fingerprint the emulation core"); goto fail; }
-    if (game.data) content_signature = fingerprint(content_signature, game.data, game.size);
-    else if (!fingerprint_file(&content_signature, rom)) { set_error("Cannot fingerprint the game file"); goto fail; }
+    has_legacy_content_signature = legacy_core_fingerprint(content_signature, &legacy_content_signature);
+    if (game.data) {
+        content_signature = fingerprint(content_signature, game.data, game.size);
+        if (has_legacy_content_signature) legacy_content_signature = fingerprint(legacy_content_signature, game.data, game.size);
+    } else if (!fingerprint_file(&content_signature, rom) ||
+               (has_legacy_content_signature && !fingerprint_file(&legacy_content_signature, rom))) {
+        set_error("Cannot fingerprint the game file"); goto fail;
+    }
     if (!p_retro_load_game(&game)) { set_error("The core cannot load this game file"); goto fail; }
     loaded = true; read_battery();
     struct retro_system_av_info av = {0}; p_retro_get_system_av_info(&av);
@@ -271,7 +296,9 @@ int am_core_load_state(const char *path) {
     if (fread(header, 1, sizeof(header), f) != sizeof(header) || memcmp(header, state_magic, 8) != 0) { fclose(f); set_error("Save state header is invalid"); return 0; }
     uint64_t size64 = get_u64(header + 8), expected_signature = get_u64(header + 16), expected_hash = get_u64(header + 24);
     size_t core_size = p_retro_serialize_size();
-    if (!core_size || !size64 || size64 > MAX_STATE_BYTES || expected_signature != content_signature || size64 < core_size) {
+    bool matching_content = expected_signature == content_signature ||
+        (has_legacy_content_signature && expected_signature == legacy_content_signature);
+    if (!core_size || !size64 || size64 > MAX_STATE_BYTES || !matching_content || size64 < core_size) {
         fclose(f); set_error("Save state belongs to another game or core version"); return 0;
     }
     size_t size = (size_t)size64; unsigned char *data = malloc(size);
@@ -300,5 +327,6 @@ void am_core_close(void) {
     if (core_initialized) { p_retro_deinit(); core_initialized = false; }
     if (handle) { dlclose(handle); handle = NULL; }
     free(rom_data); rom_data = NULL; video_sink = NULL; audio_count = 0; content_signature = 0;
+    legacy_content_signature = 0; has_legacy_content_signature = false;
     p_retro_serialize_size = NULL; p_retro_serialize = NULL; p_retro_unserialize = NULL; p_retro_reset = NULL; clear_options();
 }

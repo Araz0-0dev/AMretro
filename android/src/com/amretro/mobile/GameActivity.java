@@ -137,10 +137,10 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
                 File file=new File(states,gameId+"-slot-"+slot+".state");
                 boolean ok=load?NativeEmulator.loadState(file.getAbsolutePath()):NativeEmulator.saveState(file.getAbsolutePath());
                 if(ok){notifyUser((load?"حالت بارگذاری شد؛ جایگاه ":"حالت ذخیره شد؛ جایگاه ")+slot);if(load)resetAudio=true;}
-                else notifyUser((load?"بارگذاری حالت ممکن نشد: ":"ذخیرهٔ حالت ممکن نشد: ")+NativeEmulator.error());
+                else notifyUser((load?"بارگذاری حالت ممکن نشد: ":"ذخیرهٔ حالت ممکن نشد: ")+NativeError.persian(NativeEmulator.error()));
             } else if(command==20) {
                 if(NativeEmulator.reset()){notifyUser("بازی از ابتدا شروع شد.");resetAudio=true;}
-                else notifyUser("شروع دوباره ممکن نشد: "+NativeEmulator.error());
+                else notifyUser("شروع دوباره ممکن نشد: "+NativeError.persian(NativeEmulator.error()));
             }
         }
         return resetAudio;
@@ -168,7 +168,7 @@ public final class GameActivity extends Activity implements SurfaceHolder.Callba
             String save=new File(saves,gameId+".srm").getAbsolutePath();
             opened=NativeEmulator.open(core,romPath,system.getAbsolutePath(),save);
             if (!opened) {
-                String error=NativeEmulator.error();
+                String error=NativeError.persian(NativeEmulator.error());
                 runOnUiThread(() -> { Toast.makeText(this,"بازی باز نشد: "+error,Toast.LENGTH_LONG).show(); finish(); }); return;
             }
             if(autoState.isFile()) {
