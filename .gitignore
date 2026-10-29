@@ -33,3 +33,6 @@ dist/
 __pycache__/
 *.pyc
 /desktop/src-tauri/gen/
+
+# Local Windows installer build products (launcher exe).
+/desktop/installer/build/

@@ -1,0 +1,36 @@
+AMretro Windows runtime setup – third-party components
+
+The installer automatically downloads original, unmodified components from
+Libretro and the projects below. It verifies SHA-256 before extracting them.
+The applications and cores have their own licenses; this does not declare a
+license for the AMretro source. Some cores have non-commercial restrictions.
+Read the relevant license before redistributing or using them commercially.
+No commercial game, proprietary console BIOS, or user's personal files are
+included in this setup. The Dolphin source includes its openly developed DSP
+replacement DSP and font files distributed with Dolphin. Personal BIOS files remain separate.
+
+RetroArch 1.22.2 (GPL-3.0-or-later) and the November 2025 Windows x64 core
+snapshot: https://buildbot.libretro.com/stable/1.22.2/windows/x86_64/
+RetroArch source: https://github.com/libretro/RetroArch/tree/v1.22.2
+Core information and licenses: the installed AMretroRuntime/info/*.info files
+and https://github.com/libretro/libretro-super/tree/master/dist/info
+Libretro core source catalogue: https://github.com/libretro/libretro-super
+
+The installation downloads 43 matching core libraries. Availability of a core
+is not a claim that every game, feature, console, hardware configuration or
+firmware requirement is supported. The cores are independent upstream binaries.
+
+PPSSPP support assets: https://github.com/hrydgard/ppsspp/tree/c1581e6c3873331b93868bccd2f53f34a2316f89
+Dolphin support assets: https://github.com/libretro/dolphin/tree/227c4e05158e7c3cc41cfc751ba6b5df92193d26
+The relevant upstream licenses are installed with those assets.
+
+7-Zip standalone 7za.exe version 26.04, copyright Igor Pavlov; its license is
+included as 7zip-26.04-License.txt. Source and license:
+https://github.com/ip7z/7zip/tree/26.04 and https://www.7-zip.org/
+The executable is the unmodified upstream x64 tool, checked by SHA-256 before use.
+
+Microsoft Edge WebView2 Runtime may be automatically installed when missing.
+Microsoft product and license information: https://developer.microsoft.com/microsoft-edge/webview2/
+
+Uninstalling AMretro preserves the separately installed runtime, games, BIOS,
+cores, saves, states, settings, and runtime licenses to avoid data loss.

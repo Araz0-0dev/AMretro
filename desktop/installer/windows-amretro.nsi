@@ -27,6 +27,27 @@ RequestExecutionLevel user
 !ifndef SIDEBAR
   !error "SIDEBAR is required"
 !endif
+!ifndef EXTRACTOR
+  !error "EXTRACTOR is required"
+!endif
+!ifndef RETROARCH_WRAPPER
+  !error "RETROARCH_WRAPPER is required"
+!endif
+!ifndef RUNTIME_SCRIPT
+  !error "RUNTIME_SCRIPT is required"
+!endif
+!ifndef CORE_LIST
+  !error "CORE_LIST is required"
+!endif
+!ifndef ASSET_MANIFEST
+  !error "ASSET_MANIFEST is required"
+!endif
+!ifndef THIRD_PARTY_NOTICES
+  !error "THIRD_PARTY_NOTICES is required"
+!endif
+!ifndef SEVENZIP_LICENSE
+  !error "SEVENZIP_LICENSE is required"
+!endif
 !ifndef OUTPUT
   !error "OUTPUT is required"
 !endif
@@ -105,10 +126,53 @@ Function EnsureWebView2
   ${EndIf}
 FunctionEnd
 
+; Installs RetroArch 1.22.2, the selected cores and their support files from
+; official pinned sources. Runs before the app files are copied: a failed
+; dependency step must not leave a half-working AMretro.
+Function InstallRuntime
+  InitPluginsDir
+  SetOutPath "$PLUGINSDIR"
+  File /oname=install-windows-runtime.ps1 "${RUNTIME_SCRIPT}"
+  File /oname=7za.exe "${EXTRACTOR}"
+  File /oname=windows-core-list.txt "${CORE_LIST}"
+  File /oname=windows-support-assets.json "${ASSET_MANIFEST}"
+  File /oname=retroarch-launcher.exe "${RETROARCH_WRAPPER}"
+  ; 64-bit PowerShell is used when available (Sysnative from this 32-bit installer).
+  StrCpy $2 "$WINDIR\Sysnative\WindowsPowerShell\v1.0\powershell.exe"
+  IfFileExists "$2" +2 0
+    StrCpy $2 "$SYSDIR\WindowsPowerShell\v1.0\powershell.exe"
+  retry_runtime_setup:
+  DetailPrint "در حال آماده‌سازی RetroArch و هسته‌ها؛ ممکن است چند دقیقه طول بکشد..."
+  nsExec::ExecToLog '"$2" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\install-windows-runtime.ps1" -InstallDir "$INSTDIR" -Extractor "$PLUGINSDIR\7za.exe" -CoreList "$PLUGINSDIR\windows-core-list.txt" -AssetManifest "$PLUGINSDIR\windows-support-assets.json" -Launcher "$PLUGINSDIR\retroarch-launcher.exe"'
+  Pop $0
+  ; Success requires the exit code AND the files it promises. A missing file
+  ; is a failure even if the helper reported 0.
+  IfFileExists "$INSTDIR\AMretroRuntime\retroarch.exe" check_launcher runtime_setup_failed
+  check_launcher:
+  IfFileExists "$INSTDIR\retroarch.exe" runtime_setup_check_exit runtime_setup_failed
+  runtime_setup_check_exit:
+  ${If} $0 == 0
+    Goto runtime_setup_ok
+  ${EndIf}
+  runtime_setup_failed:
+  IfSilent runtime_setup_fail_silent
+  MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "آماده‌سازی RetroArch کامل نشد. اتصال اینترنت را بررسی کن، AMretro را ببند و دوباره تلاش کن. هیچ فایل بازی، BIOS یا ذخیره‌ای پاک نشده است." IDRETRY retry_runtime_setup
+  runtime_setup_fail_silent:
+  SetErrorLevel 1
+  Abort
+  runtime_setup_ok:
+  CreateDirectory "$INSTDIR\Licenses"
+  SetOutPath "$INSTDIR\Licenses"
+  File /oname=THIRD-PARTY-WINDOWS.txt "${THIRD_PARTY_NOTICES}"
+  File /oname=7zip-License.txt "${SEVENZIP_LICENSE}"
+FunctionEnd
+
 Section "AMretro" SEC_APP
   Call EnsureWebView2
   SetOutPath "$INSTDIR"
   SetOverwrite on
+  Call InstallRuntime
+  SetOutPath "$INSTDIR"
   File /oname=AMretro.exe "${APP_BINARY}"
   File /oname=WebView2Loader.dll "${WEBVIEW_LOADER}"
   File /oname=OFL-Vazirmatn.txt "${FONT_LICENSE}"
@@ -143,6 +207,11 @@ Section "Uninstall"
   Delete "$INSTDIR\AMretro.exe"
   Delete "$INSTDIR\WebView2Loader.dll"
   Delete "$INSTDIR\OFL-Vazirmatn.txt"
+  Delete "$INSTDIR\retroarch.exe"
+  Delete "$INSTDIR\Licenses\THIRD-PARTY-WINDOWS.txt"
+  Delete "$INSTDIR\Licenses\7zip-License.txt"
+  RMDir "$INSTDIR\Licenses"
+  ; AMretroRuntime is deliberately kept: it can contain RetroArch saves and states.
   Delete "$INSTDIR\Uninstall.exe"
   RMDir "$INSTDIR"
   DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\AMretro"

@@ -65,9 +65,21 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Rust tests failed' }
           cargo build --locked --release --bin retro-hub-desktop
           if ($LASTEXITCODE -ne 0) { throw 'Rust build failed' }
+      - name: Build RetroArch launcher with MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
       - name: Create candidate installer
         run: |
           $ErrorActionPreference = 'Stop'
+          $launcherDir = Join-Path $env:RUNNER_TEMP 'amretro-launcher'
+          New-Item -ItemType Directory -Force -Path $launcherDir | Out-Null
+          $launcher = Join-Path $launcherDir 'retroarch-launcher.exe'
+          Push-Location $launcherDir
+          try {
+            & cl.exe /nologo /W4 /WX /O1 /DUNICODE /D_UNICODE (Join-Path $env:GITHUB_WORKSPACE 'desktop/installer/retroarch-wrapper.c') /Fe:$launcher /link /SUBSYSTEM:WINDOWS user32.lib kernel32.lib
+            if ($LASTEXITCODE -ne 0) { throw 'RetroArch launcher build failed' }
+          } finally { Pop-Location }
           $root = $env:GITHUB_WORKSPACE
           $bootstrap = Join-Path $root 'desktop/installer/vendor/MicrosoftEdgeWebview2Setup.exe'
           $expected = '13f6d9cdc8c3e7186e4b180db7f48e199ee97d631480e8391fb3106f338fb21a'
@@ -81,10 +93,15 @@ jobs:
           $artifacts = Join-Path $env:RUNNER_TEMP 'amretro-artifacts'
           New-Item -ItemType Directory -Force -Path $artifacts | Out-Null
           $output = Join-Path $artifacts 'AMretro-Setup-0.3.1-x64-candidate.exe'
+          $inst = Join-Path $root 'desktop/installer'
           $arguments = @('/V2', "/DAPP_BINARY=$binary", "/DWEBVIEW_LOADER=$($loader.FullName)",
             "/DWEBVIEW_BOOTSTRAPPER=$bootstrap", "/DFONT_LICENSE=$(Join-Path $root 'desktop/ui/assets/fonts/OFL-Vazirmatn.txt')",
-            "/DAPP_ICON=$(Join-Path $root 'desktop/src-tauri/icons/icon.ico')", "/DSIDEBAR=$(Join-Path $root 'desktop/installer/sidebar.bmp')",
-            "/DOUTPUT=$output", (Join-Path $root 'desktop/installer/windows-amretro.nsi'))
+            "/DAPP_ICON=$(Join-Path $root 'desktop/src-tauri/icons/icon.ico')", "/DSIDEBAR=$(Join-Path $inst 'sidebar.bmp')",
+            "/DEXTRACTOR=$(Join-Path $inst 'vendor/7za-26.04-x64.exe')", "/DRETROARCH_WRAPPER=$launcher",
+            "/DRUNTIME_SCRIPT=$(Join-Path $inst 'install-windows-runtime.ps1')", "/DCORE_LIST=$(Join-Path $inst 'windows-core-list.txt')",
+            "/DASSET_MANIFEST=$(Join-Path $inst 'windows-support-assets.json')", "/DTHIRD_PARTY_NOTICES=$(Join-Path $inst 'THIRD-PARTY-WINDOWS.txt')",
+            "/DSEVENZIP_LICENSE=$(Join-Path $inst 'vendor/7zip-26.04-License.txt')",
+            "/DOUTPUT=$output", (Join-Path $inst 'windows-amretro.nsi'))
           & $nsis @arguments
           if ($LASTEXITCODE -ne 0 -or -not (Test-Path $output)) { throw 'NSIS packaging failed' }
       - name: Install, launch and uninstall on Windows
@@ -96,6 +113,9 @@ jobs:
           if ($install.ExitCode -ne 0) { throw "Installer returned $($install.ExitCode)" }
           $exe = Join-Path $dest 'AMretro.exe'
           if (-not (Test-Path $exe) -or -not (Test-Path (Join-Path $dest 'WebView2Loader.dll'))) { throw 'Installed files missing' }
+          if (-not (Test-Path (Join-Path $dest 'retroarch.exe')) -or -not (Test-Path (Join-Path $dest 'AMretroRuntime/retroarch.exe'))) { throw 'RetroArch runtime was not installed' }
+          $cores = Join-Path $env:APPDATA 'RetroArch/cores'
+          if (-not (Test-Path (Join-Path $cores 'pcsx_rearmed_libretro.dll'))) { throw 'PS1 core was not installed' }
           $app = Start-Process -FilePath $exe -PassThru
           try {
             $found = $false
